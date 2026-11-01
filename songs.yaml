@@ -1,0 +1,14 @@
+# The song catalogue: the ONE place that says what counts as a "song".
+# `file` must match exactly what Home Assistant's media_player reports as `source`
+# (the FPP sequence file name). Anything not listed here (fade, Circles, fire, ...) is ignored.
+# After editing, restart the container (or call POST /api/v1/reload with the API key).
+songs:
+  - { file: "All-I-Want-for-Christmas-Is-You.fseq", title: "All I Want for Christmas Is You", artist: "Mariah Carey", category: "Christmas Classics" }
+  - { file: "Driving-Home-For-Christmas.fseq", title: "Driving Home For Christmas", artist: "Chris Rea", category: "Christmas Classics" }
+  - { file: "wham-Last-Christmas.fseq", title: "Last Christmas", artist: "Wham!", category: "Christmas Classics" }
+  - { file: "Christmas Wrapping - The Waitresses.fseq", title: "Christmas Wrapping", artist: "The Waitresses", category: "Christmas Classics" }
+  - { file: "Merry Christmas - Ed Sheeran.fseq", title: "Merry Christmas", artist: "Ed Sheeran", category: "Christmas Modern" }
+  - { file: "XMAS.fseq", title: "X.M.A.S", artist: "Kylie Minogue", category: "Christmas Modern" }
+  - { file: "Santa Tell Me - Ariana Grande.fseq", title: "Santa Tell Me", artist: "Ariana Grande", category: "Christmas Modern" }
+  - { file: "Sia - Snowman.fseq", title: "Snowman", artist: "Sia", category: "Christmas Modern" }
+  - { file: "Lou Monte - Dominick The Donkey HQ Audio.fseq", title: "Dominick The Donkey", artist: "Lou Monte", category: "Other / Comedy" }

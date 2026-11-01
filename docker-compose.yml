@@ -1,0 +1,25 @@
+# Portainer: Stacks > Add stack > "Repository" (git) if this folder is in a repo, so Portainer can
+# build the image; or build/push the image yourself (see README) and replace `build: .` with `image:`.
+# Set the variables in the stack's "Environment variables" section (or paste a .env file).
+services:
+  bussage-stats:
+    build: .
+    image: bussage-stats:latest
+    container_name: bussage-stats
+    restart: unless-stopped
+    environment:
+      API_KEY: ${API_KEY:?set API_KEY (>=16 chars)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://tobywhiting10.com}
+      CHARITY_SHARE: ${CHARITY_SHARE:-0.90}
+      FEE_PERCENT: ${FEE_PERCENT:-1.69}
+      FEE_FIXED_PENCE: ${FEE_FIXED_PENCE:-0}
+      COLLECT_INTERVAL_MIN: ${COLLECT_INTERVAL_MIN:-60}
+      CRUK_URL: ${CRUK_URL:-https://fundraise.cancerresearchuk.org/page/bussage-christmas-lights-show}
+      TZ: Europe/London
+    volumes:
+      - bussage-data:/data            # SQLite database: include this volume in your backups
+    ports:
+      - "8000:8000"                   # or remove and attach to your reverse proxy's network instead
+
+volumes:
+  bussage-data:
