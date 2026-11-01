@@ -46,3 +46,11 @@ def test_cruk_parse():
     assert parse_cruk('<div>Total raised</div><span>&pound;12.50</span> <b>+ £3.12 Gift Aid</b>') == (1250, 312)
     assert parse_cruk('<p>Total raised£1,234.00</p>') == (123400, 0)
     assert parse_cruk('<p>nothing here</p>') is None
+
+
+def test_buttons_yaml():
+    import yaml
+    with TestClient(app) as c:
+        t = c.get("/api/v1/songs/buttons.yaml").text
+    blocks = [yaml.safe_load(b.split("\n", 1)[1]) for b in t.split("# ---- ")[1:]]
+    assert blocks and blocks[0][0]["type"] == "heading" and blocks[0][1]["type"] == "custom:button-card"

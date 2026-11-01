@@ -42,3 +42,10 @@ Back up the `bussage-data` volume (SQLite database). To change songs, edit `song
   (the total including Gift Aid). Scraping a charity page may breach its terms; check them.
 * Check CRUK / Fundraising Regulator rules on keeping 10% and on holding donations before passing them on;
   write the policy page accordingly. Not legal advice.
+
+## Adding a song (the only two places)
+1. Add one line to `songs.yaml`, redeploy the container.
+2. Open `https://stats.YOUR-DOMAIN/api/v1/songs/buttons.yaml`, copy the block for the song's category into the
+   dashboard column. (Everything else follows by itself: the stats catalogue, the website feed, and HA's
+   song picker `input_select.christmas_songs`, which `ha/bussage_stats.yaml` extends within ~15 minutes
+   or on HA restart. It only adds options; remove old ones by hand.)

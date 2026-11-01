@@ -328,6 +328,40 @@ def songs(response: Response):
     return {"songs": cat, "files": [s["file"] for s in cat]}
 
 
+def _button(song: dict) -> dict:
+    """One dashboard song button, identical in look to the hand-made ones."""
+    f = song["file"]
+    name = f'{song["artist"]} - {song["title"]}' if song["artist"] else song["title"]
+    return {
+        "type": "custom:button-card", "entity": "input_select.christmas_songs", "name": name, "icon": "mdi:music",
+        "tap_action": {"action": "call-service", "service": "input_select.select_option",
+                       "service_data": {"entity_id": "input_select.christmas_songs", "option": f}},
+        "state": [{"value": f, "color": "green", "icon": "mdi:music-note"}, {"value": "default", "color": "grey"}],
+        "extra_styles": ":host {\n  display: block;\n  width: 100%;\n  min-width: 0;\n}\n",
+        "styles": {
+            "card": [{"width": "calc(25vw - 44px)"}, {"min-width": 0}, {"min-height": "100px"},
+                     {"box-sizing": "border-box"}, {"padding": "8px"}],
+            "name": [{"white-space": "normal"}, {"overflow": "visible"}, {"text-overflow": "clip"},
+                     {"text-align": "center"}, {"line-height": 1.2}, {"font-size": "clamp(14px, 1.5vw, 22px)"}],
+        },
+    }
+
+
+@app.get("/api/v1/songs/buttons.yaml", response_class=Response)
+def song_buttons_yaml():
+    """Ready-to-paste dashboard YAML: a heading + one button per song, grouped by category.
+    Open this URL, copy a category block into the dashboard's `cards:` list of a column."""
+    groups: dict[str, list] = {}
+    for song in load_catalogue():
+        groups.setdefault(song["category"], []).append(song)
+    out = ["# Generated from songs.yaml. Paste a block into the `cards:` list of a column\n"
+           "# (inside the vertical-stack). Re-open this URL after adding songs.\n"]
+    for cat, songs in groups.items():
+        cards = [{"type": "heading", "heading": cat, "heading_style": "title"}] + [_button(x) for x in songs]
+        out.append(f"\n# ---- {cat} ----\n" + yaml.safe_dump(cards, sort_keys=False, allow_unicode=True))
+    return Response("".join(out), media_type="text/plain; charset=utf-8")
+
+
 @app.post("/api/v1/events/play", dependencies=[Depends(require_key)])
 def post_play(p: PlayIn):
     if not ID_RE.match(p.event_id):
