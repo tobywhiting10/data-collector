@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
     environment:
       API_KEY: ${API_KEY:?set API_KEY (>=16 chars)}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://tobywhiting10.com}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://stats.tobywhiting10.com}
       CHARITY_SHARE: ${CHARITY_SHARE:-0.90}
       FEE_PERCENT: ${FEE_PERCENT:-1.69}
       FEE_FIXED_PENCE: ${FEE_FIXED_PENCE:-0}
@@ -17,9 +17,23 @@ services:
       CRUK_URL: ${CRUK_URL:-https://fundraise.cancerresearchuk.org/page/bussage-christmas-lights-show}
       TZ: Europe/London
     volumes:
-      - bussage-data:/data            # SQLite database: include this volume in your backups
+      - /etc/server_data/bussage-data:/data            # SQLite database: include this volume in your backups
     ports:
-      - "8000:8000"                   # or remove and attach to your reverse proxy's network instead
+      - "8800:8000"                   # or remove and attach to your reverse proxy's network instead
+    networks:
+      - proxy
 
-volumes:
-  bussage-data:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+
+      - "traefik.http.routers.data-collector.rule=Host(`stats.tobywhiting10.com`)"
+      - "traefik.http.routers.data-collector.entrypoints=https"
+      - "traefik.http.routers.data-collector.tls=true"
+      - "traefik.http.routers.data-collector.tls.certresolver=stepca"
+
+      - "traefik.http.services.data-collector.loadbalancer.server.port=8000"
+
+networks:
+  proxy:
+    external: true
