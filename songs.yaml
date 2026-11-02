@@ -3,7 +3,7 @@
 # (the FPP sequence file name). Anything not listed here (fade, Circles, fire, ...) is ignored.
 # After editing, restart the container (or call POST /api/v1/reload with the API key).
 songs:
-  - { file: "All-I-Want-for-Christmas-Is-You.fseq", title: "All I Want for Christmas Is You", artist: "Mariah Carey", category: "Christmas Classics" }
+  - { file: "All-I-Want-for-Christmas-Is-You.fseq", title: "All I Want for Christmas Is You", artist: "Mariah Carey", category: "Christmas Classics", duration_seconds: "243" }
   - { file: "Driving-Home-For-Christmas.fseq", title: "Driving Home For Christmas", artist: "Chris Rea", category: "Christmas Classics" }
   - { file: "wham-Last-Christmas.fseq", title: "Last Christmas", artist: "Wham!", category: "Christmas Classics" }
   - { file: "Christmas Wrapping - The Waitresses.fseq", title: "Christmas Wrapping", artist: "The Waitresses", category: "Christmas Classics" }
