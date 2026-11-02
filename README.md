@@ -61,7 +61,7 @@ Buy Me a Coffee fee % + fixed pence. Saved settings override the environment def
 calculated on demand, so they change retroactively for every past payment. The BMC fee is an estimate (the 5% default is a guess:
 set it to your real rate). The HA dashboard's "90% / 10%" wording is static text: edit it if you change the split.
 Definitions (also in `GET /api/v1/summary` and `donations.summary` in `/api/v1/stats`):
-* `total` = CRUK page + card (gross) - moved to CRUK (moved money is already inside the CRUK figure)
+* `total` = CRUK page + (card_charity - moved_to_cruk): everything raised for CRUK, whether or not it has reached the page yet. `goal` (setting, default £1000, env `CRUK_GOAL`) and `goal_percent` are published beside it
 * `cruk_only`, `card_total` (gross), `card_charity` (90% after estimated fees), `card_project`
 * `amount_to_pay_cruk` = card_charity - moved_to_cruk (what you still owe the CRUK page); `moved_to_cruk`
 * `bmc_last_2_months`, `bmc_total` (gross) and `_net` versions after the estimated BMC fee; `project_total` = card_project + bmc_total_net (assumes Buy Me a Coffee money goes to the project)

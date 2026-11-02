@@ -30,6 +30,7 @@ select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var
 
 <section><h2>Settings</h2>
 <form id="f-set">
+<label class="small">CRUK goal (£)<br><input type="number" step="1" min="0" id="s-cruk_goal" required></label>
 <label class="small">To CRUK %<br><input type="number" step="0.01" min="0" max="100" id="s-charity_percent" required></label>
 <label class="small">To project %<br><input type="number" id="s-project" disabled></label>
 <label class="small">Card fee %<br><input type="number" step="0.01" min="0" max="20" id="s-card_fee_percent" required></label>
@@ -83,7 +84,7 @@ function rows(t,items,del){t.innerHTML="<tr><th>Date</th><th class=n>Amount</th>
   tr.insertCell().textContent=i.note||"";const b=document.createElement("button");b.className="x";b.textContent="delete";
   b.onclick=async()=>{if(confirm("Delete "+P(i.amount)+" on "+i.date+"?")){await api("DELETE",del+i.id);load()}};tr.insertCell().appendChild(b)}}
 async function load(){const s=await api("GET","/dash/api/state"),m=s.summary;
- const K=[["Amount to be paid to CRUK",m.amount_to_pay_cruk,1],["Total (CRUK + card - moved)",m.total,1],["CRUK page only",m.cruk_only],["Card total (gross)",m.card_total],["Card to charity (90%)",m.card_charity],
+ const K=[["Amount to be paid to CRUK",m.amount_to_pay_cruk,1],["Total raised for CRUK (page + card share not yet moved)"+(m.goal_percent!=null?" - "+m.goal_percent+"% of "+P(m.goal)+" goal":""),m.total,1],["CRUK page only",m.cruk_only],["Card total (gross)",m.card_total],["Card to charity (90%)",m.card_charity],
   ["Card to project (10%)",m.card_project],["Moved to CRUK",m.moved_to_cruk],
   ["Buy Me a Coffee (last 2 months)",m.bmc_last_2_months],["Project total",m.project_total]];
  const c=m.settings;for(const k in c){const e=$("s-"+k);if(e&&document.activeElement!==e&&!e.dataset.dirty)e.value=c[k]}showProj();
@@ -96,7 +97,7 @@ function showProj(){const v=parseFloat($("s-charity_percent").value);$("s-projec
 for(const e of document.querySelectorAll("#f-set input"))e.oninput=()=>{e.dataset.dirty=1;showProj()};
 $("f-set").onsubmit=async e=>{e.preventDefault();const m=$("m-set");m.className="msg";m.textContent="Saving and reading CRUK...";
  const g=k=>Number($("s-"+k).value);
- try{const r=await api("POST","/dash/api/settings",{charity_percent:g("charity_percent"),card_fee_percent:g("card_fee_percent"),card_fee_fixed_pence:g("card_fee_fixed_pence"),bmc_fee_percent:g("bmc_fee_percent"),bmc_fee_fixed_pence:g("bmc_fee_fixed_pence")});
+ try{const r=await api("POST","/dash/api/settings",{cruk_goal:g("cruk_goal"),charity_percent:g("charity_percent"),card_fee_percent:g("card_fee_percent"),card_fee_fixed_pence:g("card_fee_fixed_pence"),bmc_fee_percent:g("bmc_fee_percent"),bmc_fee_fixed_pence:g("bmc_fee_fixed_pence")});
   for(const i of document.querySelectorAll("#f-set input"))delete i.dataset.dirty;
   m.className="msg "+(r.cruk_refreshed?"ok":"warn");m.textContent=r.cruk_refreshed?"Saved. CRUK figure refreshed and totals recalculated.":"Saved and totals recalculated, but: "+r.cruk_error;load()}
  catch(x){m.className="msg err";m.textContent=x.message}};

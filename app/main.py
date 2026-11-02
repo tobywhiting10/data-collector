@@ -164,12 +164,12 @@ def pounds(pence: int) -> float:
 
 
 # ------------------------------------------------------------------------------ stats
-SETTING_KEYS = ("charity_percent", "card_fee_percent", "card_fee_fixed_pence", "bmc_fee_percent", "bmc_fee_fixed_pence")
+SETTING_KEYS = ("cruk_goal", "charity_percent", "card_fee_percent", "card_fee_fixed_pence", "bmc_fee_percent", "bmc_fee_fixed_pence")
 
 
 def default_settings() -> dict:
     """Environment values are the defaults; anything saved on /dash overrides them."""
-    return {"charity_percent": float(CHARITY_SHARE * 100), "card_fee_percent": float(FEE_PERCENT),
+    return {"cruk_goal": float(os.environ.get("CRUK_GOAL", "1000")), "charity_percent": float(CHARITY_SHARE * 100), "card_fee_percent": float(FEE_PERCENT),
             "card_fee_fixed_pence": FEE_FIXED_PENCE,
             "bmc_fee_percent": float(os.environ.get("BMC_FEE_PERCENT", "5")),
             "bmc_fee_fixed_pence": int(os.environ.get("BMC_FEE_FIXED_PENCE", "0"))}
@@ -252,10 +252,15 @@ def compute_stats() -> dict:
     # Card money is transferred by hand to the CRUK page, so it is already INSIDE the CRUK total
     # once transferred. The headline charity figure is therefore the CRUK page alone (incl. Gift Aid).
     raised_charity = cruk
-    # Summary for the admin page / website. Card money moved to CRUK is inside the CRUK total already,
-    # so it is subtracted once: total = CRUK + card (gross) - moved.
+    # Summary for the admin page / website. Headline total = what has been raised FOR CRUK:
+    # the CRUK page (which already contains money moved there) + the charity share of card money not yet moved.
+    #   total = CRUK + (card_charity - moved)
+    total_pence = cruk + charity_card - moved
+    goal = cfg["cruk_goal"]
     summary = {
-        "total": pounds(cruk + gross - moved),
+        "total": pounds(total_pence),
+        "goal": goal,
+        "goal_percent": round(total_pence / 100 / goal * 100, 1) if goal > 0 else None,
         "cruk_only": pounds(cruk),
         "card_total": pounds(gross),                            # includes manually added (e.g. cash) payments
         "manual_total": pounds(manual_total),
@@ -636,6 +641,7 @@ async def bmc_webhook(request: Request, x_signature_sha256: Optional[str] = Head
 
 
 class SettingsIn(BaseModel):
+    cruk_goal: float = Field(ge=0, le=10_000_000)
     charity_percent: float = Field(ge=0, le=100)          # share of card money (after fees) that goes to CRUK
     card_fee_percent: float = Field(ge=0, le=20)
     card_fee_fixed_pence: int = Field(ge=0, le=100)

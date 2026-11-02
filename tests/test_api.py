@@ -68,7 +68,7 @@ def test_dash_and_summary():
         assert c.post("/dash/api/bmc", json={"amount": "1", "date": "bad"}).status_code == 422
         m = c.get("/api/v1/summary").json()
         assert m["cruk_only"] == 100.0 and m["card_total"] >= 23.0 and m["moved_to_cruk"] == 20.0
-        assert m["total"] == round(100.0 + m["card_total"] - 20.0, 2)
+        assert m["total"] == round(100.0 + m["card_charity"] - 20.0, 2) and m["goal"] == 1000.0
         assert m["bmc_last_2_months"] == 3.0 and m["bmc_total"] == 10.5
         assert m["project_total"] == round(m["card_project"] + m["bmc_total_net"], 2) and m["bmc_total_net"] < 10.5
         st = c.get("/dash/api/state").json()
@@ -110,14 +110,14 @@ def test_settings_change_recalculates():
         with TestClient(app) as c:
             c.post("/api/v1/events/payment", headers=H, json={"id": "set-pay-1", "amount": "100.00"})
             a = c.get("/api/v1/summary").json()
-            r = c.post("/dash/api/settings", json={"charity_percent": 50, "card_fee_percent": 0, "card_fee_fixed_pence": 0,
+            r = c.post("/dash/api/settings", json={"cruk_goal": 500, "charity_percent": 50, "card_fee_percent": 0, "card_fee_fixed_pence": 0,
                                                     "bmc_fee_percent": 0, "bmc_fee_fixed_pence": 0}).json()
             assert r["ok"] and r["cruk_refreshed"] is True
             b = c.get("/api/v1/summary").json()
             assert b["card_charity"] == round(a["card_total"] * 0.5, 2) and b["card_project"] == b["card_charity"]
             assert b["amount_to_pay_cruk"] == round(b["card_charity"] - b["moved_to_cruk"], 2)
-            assert b["bmc_total_net"] == b["bmc_total"]
-            assert c.post("/dash/api/settings", json={"charity_percent": 101, "card_fee_percent": 0, "card_fee_fixed_pence": 0,
+            assert b["bmc_total_net"] == b["bmc_total"] and b["goal"] == 500 and b["goal_percent"] == round(b["total"] / 5, 1)
+            assert c.post("/dash/api/settings", json={"cruk_goal": 500, "charity_percent": 101, "card_fee_percent": 0, "card_fee_fixed_pence": 0,
                                                        "bmc_fee_percent": 0, "bmc_fee_fixed_pence": 0}).status_code == 422
     finally:
         m.collect_cruk = orig
