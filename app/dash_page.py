@@ -40,6 +40,13 @@ select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var
 <div class="msg" id="m-set"></div>
 <div class="small">Card split applies to card money after fees. Saving re-reads the CRUK page and recalculates every total (past payments included).</div></section>
 
+<section><h2>Add a manual payment (cash in hand)</h2>
+<div class="small" style="margin-bottom:8px">For donations Home Assistant did not record, e.g. cash. They are counted with the card total and get the same CRUK/project split. Tick the box only if card fees apply (a card payment the reader app did not report).</div>
+<form id="f-man"><input type="number" step="0.01" min="0.01" placeholder="£ amount" required id="man-amt">
+<input type="date" id="man-date"><input class="note" placeholder="note, e.g. cash tin (optional)" id="man-note" maxlength="120">
+<label class="small" style="align-self:center"><input type="checkbox" id="man-fees"> transaction fees apply</label><button>Add payment</button></form>
+<div class="msg" id="m-man"></div></section>
+
 <section><h2>Money moved from the card reader to CRUK</h2>
 <div class="small" style="margin-bottom:8px">Enter the amount of <b>each transfer you make</b> (e.g. this week's £60), <b>not</b> a running total. The page adds them up; delete a row to correct a mistake.</div>
 <form id="f-tr"><input type="number" step="0.01" min="0.01" placeholder="£ amount" required id="tr-amt">
@@ -59,8 +66,8 @@ select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var
 <div class="small" id="foot"></div>
 </div>
 <div id="pg-tx" hidden><section><h2>Transaction log</h2>
-<div class="small">Every card payment (reported one by one by Home Assistant) and every Buy Me a Coffee entry (webhook or manual). Fees are estimates from the current settings.</div>
-<form><select id="tx-filter"><option value="">All</option><option value="card">Card only</option><option value="coffee">Coffee only</option></select><span class="small" id="tx-count"></span></form>
+<div class="small">Every card payment (reported one by one by Home Assistant), manual payment and Buy Me a Coffee entry. <b>Hide</b> keeps a row here but excludes it from every total (use for refunds); <b>delete</b> removes it for good. Fees are estimates from the current settings.</div>
+<form><select id="tx-filter"><option value="">All</option><option value="card">Card only</option><option value="manual">Manual payments only</option><option value="coffee">Coffee only</option></select><span class="small" id="tx-count"></span></form>
 <div style="overflow-x:auto"><table id="t-tx"></table></div></section></div>
 <div id="pg-yaml" hidden><section><h2>Song buttons for the Home Assistant dashboard</h2>
 <div class="small">Generated from songs.yaml. Copy a category block into a column's <code>cards:</code> list.</div>
@@ -68,7 +75,7 @@ select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var
 <textarea id="y-text" readonly style="width:100%;height:60vh;font:12px/1.3 monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea></section></div>
 </main><script>
 const $=id=>document.getElementById(id), P=n=>"£"+Number(n).toFixed(2), today=new Date().toISOString().slice(0,10);
-$("tr-date").value=$("bmc-date").value=today;
+$("tr-date").value=$("bmc-date").value=$("man-date").value=today;
 async function api(m,u,b){const r=await fetch(u,{method:m,headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined});
  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(typeof j.detail==="string"?j.detail:"Rejected: check the values");return j}
 function rows(t,items,del){t.innerHTML="<tr><th>Date</th><th class=n>Amount</th><th>Note</th><th></th></tr>";
@@ -98,19 +105,26 @@ function show(t){for(const x of TABS){$("pg-"+x).hidden=x!==t;$("tab-"+x).classL
  try{location.hash=t}catch(e){} if(t==="tx")loadTx(); if(t==="yaml"&&!$("y-text").value)loadYaml()}
 for(const x of TABS)$("tab-"+x).onclick=()=>show(x);
 async function loadTx(){const f=$("tx-filter").value,d=await api("GET","/dash/api/transactions");const t=$("t-tx");
- t.innerHTML="<tr><th>When</th><th>Type</th><th>Source</th><th class=n>Amount</th><th class=n>Est. fee</th><th class=n>Est. net</th><th>Reference</th></tr>";
- let n=0;for(const x of d.transactions){if(f&&x.type!==f)continue;n++;const r=t.insertRow();
+ t.innerHTML="<tr><th>When</th><th>Type</th><th>Source</th><th class=n>Amount</th><th class=n>Est. fee</th><th class=n>Est. net</th><th>Reference</th><th></th></tr>";
+ let n=0,h=0;for(const x of d.transactions){if(f&&x.type!==f)continue;n++;const r=t.insertRow();if(x.hidden){h++;r.style.opacity=".45";r.style.textDecoration="line-through"}
   const w=x.when.length>10?x.when.replace("T"," ").slice(0,16):x.when;
-  [w,x.type==="card"?"Card":"Coffee",x.source].forEach(v=>r.insertCell().textContent=v);
-  [x.amount,x.est_fee,x.est_net].forEach(v=>{const c=r.insertCell();c.className="n";c.textContent=P(v)});r.insertCell().textContent=x.ref}
- $("tx-count").textContent=n+" shown"+(d.count>d.shown?" (latest "+d.shown+" of "+d.count+")":"")}
+  [w,x.type==="card"?"Card":x.type==="manual"?"Manual":"Coffee",x.source+(x.hidden?" [hidden - not counted]":"")].forEach(v=>r.insertCell().textContent=v);
+  [x.amount,x.est_fee,x.est_net].forEach(v=>{const c=r.insertCell();c.className="n";c.textContent=P(v)});r.insertCell().textContent=x.ref;
+  const a=r.insertCell(),hb=document.createElement("button"),db=document.createElement("button");a.style.whiteSpace="nowrap";
+  hb.className=db.className="x";hb.textContent=x.hidden?"unhide":"hide";db.textContent="delete";db.style.marginLeft="4px";
+  const u="/dash/api/transactions/"+x.type+"/"+encodeURIComponent(x.key);
+  hb.onclick=async()=>{await api("POST",u+"/hidden",{hidden:!x.hidden});loadTx();load()};
+  db.onclick=async()=>{if(confirm("Permanently delete this "+P(x.amount)+" entry? Hide is safer for Home Assistant payments (a retry could re-add a deleted one).")){await api("DELETE",u);loadTx();load()}};
+  a.append(hb,db)}
+ $("tx-count").textContent=n+" shown"+(h?", "+h+" hidden":"")+(d.count>d.shown?" (latest "+d.shown+" of "+d.count+")":"")}
 $("tx-filter").onchange=loadTx;
 async function loadYaml(){$("y-msg").textContent="Loading...";try{const r=await fetch("/api/v1/songs/buttons.yaml");$("y-text").value=await r.text();$("y-msg").textContent=""}catch(e){$("y-msg").textContent="Failed: "+e.message}}
 $("y-load").onclick=loadYaml;
 $("y-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("y-text").value);$("y-msg").textContent="Copied"}catch(e){$("y-text").select();$("y-msg").textContent="Press Ctrl+C to copy"}};
 function wire(f,msg,url,body){$(f).onsubmit=async e=>{e.preventDefault();const m=$(msg);m.className="msg";m.textContent="";
- try{await api("POST",url,body());m.className="msg ok";m.textContent="Saved";e.target.reset();$("tr-date").value=$("bmc-date").value=today;load()}catch(x){m.className="msg err";m.textContent=x.message}}}
+ try{await api("POST",url,body());m.className="msg ok";m.textContent="Saved";e.target.reset();$("tr-date").value=$("bmc-date").value=$("man-date").value=today;load()}catch(x){m.className="msg err";m.textContent=x.message}}}
 wire("f-tr","m-tr","/dash/api/transfers",()=>({amount:$("tr-amt").value,date:$("tr-date").value,note:$("tr-note").value}));
+wire("f-man","m-man","/dash/api/payments",()=>({amount:$("man-amt").value,date:$("man-date").value,note:$("man-note").value,apply_fees:$("man-fees").checked}));
 wire("f-bmc","m-bmc","/dash/api/bmc",()=>({amount:$("bmc-amt").value,date:$("bmc-date").value,note:$("bmc-note").value}));
 wire("f-cruk","m-bmc","/dash/api/cruk",()=>({total:$("cruk-amt").value}));
 if(TABS.includes(location.hash.slice(1)))show(location.hash.slice(1));

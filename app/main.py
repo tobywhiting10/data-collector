@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import sqlite3
+import uuid
 from contextlib import asynccontextmanager, closing
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -85,9 +86,15 @@ def init_db() -> None:
 def migrate_db() -> None:
     """Add the webhook de-duplication column to databases created before it existed."""
     with closing(db()) as c, c:
-        cols = [r["name"] for r in c.execute("PRAGMA table_info(bmc)")]
-        if "ext_id" not in cols:
-            c.execute("ALTER TABLE bmc ADD COLUMN ext_id TEXT")
+        def add(table, col, ddl):
+            if col not in [r["name"] for r in c.execute(f"PRAGMA table_info({table})")]:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+        add("bmc", "ext_id", "TEXT")
+        add("bmc", "hidden", "INTEGER NOT NULL DEFAULT 0")          # hidden rows are excluded from every calculation
+        add("payments", "hidden", "INTEGER NOT NULL DEFAULT 0")
+        add("payments", "manual", "INTEGER NOT NULL DEFAULT 0")     # 1 = entered by hand on /dash (e.g. cash)
+        add("payments", "apply_fees", "INTEGER NOT NULL DEFAULT 1")  # 0 = no card fee for this payment
+        add("payments", "note", "TEXT")
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_bmc_ext ON bmc(ext_id)")
 
 
@@ -186,10 +193,10 @@ def compute_stats() -> dict:
     by_file = {s["file"]: s for s in cat}
     with closing(db()) as c:
         plays = c.execute("SELECT file, started_at, seconds, source FROM plays").fetchall()
-        pays = c.execute("SELECT amount_pence FROM payments").fetchall()
+        pays = c.execute("SELECT amount_pence, apply_fees, manual FROM payments WHERE hidden=0").fetchall()
         ext = {r["name"]: dict(r) for r in c.execute("SELECT * FROM external")}
         moved = c.execute("SELECT COALESCE(SUM(amount_pence),0) FROM transfers").fetchone()[0]
-        bmc_rows = c.execute("SELECT amount_pence, day FROM bmc").fetchall()
+        bmc_rows = c.execute("SELECT amount_pence, day FROM bmc WHERE hidden=0").fetchall()
     cfg = get_settings()
     cutoff = (datetime.now(timezone.utc).date() - timedelta(days=61)).isoformat()
     bmc_fee = lambda a: fee_pence(a, cfg["bmc_fee_percent"], cfg["bmc_fee_fixed_pence"])
@@ -234,7 +241,9 @@ def compute_stats() -> dict:
 
     # ---- card money (integer pence)
     gross = sum(p["amount_pence"] for p in pays)
-    fees = sum(fee_pence(p["amount_pence"], cfg["card_fee_percent"], cfg["card_fee_fixed_pence"]) for p in pays)
+    fees = sum(fee_pence(p["amount_pence"], cfg["card_fee_percent"], cfg["card_fee_fixed_pence"])
+               for p in pays if p["apply_fees"])
+    manual_total = sum(p["amount_pence"] for p in pays if p["manual"])
     net = gross - fees
     charity_card = int((Decimal(net) * Decimal(str(cfg["charity_percent"])) / 100).quantize(Decimal("1")))
     project_card = net - charity_card
@@ -248,7 +257,8 @@ def compute_stats() -> dict:
     summary = {
         "total": pounds(cruk + gross - moved),
         "cruk_only": pounds(cruk),
-        "card_total": pounds(gross),
+        "card_total": pounds(gross),                            # includes manually added (e.g. cash) payments
+        "manual_total": pounds(manual_total),
         "card_charity": pounds(charity_card),
         "card_project": pounds(project_card),
         "amount_to_pay_cruk": pounds(charity_card - moved),     # charity share of card money not yet moved to CRUK
@@ -508,7 +518,8 @@ def _day(d: Optional[str]) -> str:
 
 def _money_rows(table: str) -> list[dict]:
     with closing(db()) as c:
-        rows = c.execute(f"SELECT id, amount_pence, day, note FROM {table} ORDER BY day DESC, id DESC LIMIT 200").fetchall()
+        where = "WHERE hidden=0" if table == "bmc" else ""
+        rows = c.execute(f"SELECT id, amount_pence, day, note FROM {table} {where} ORDER BY day DESC, id DESC LIMIT 200").fetchall()
     return [{"id": r["id"], "amount": pounds(r["amount_pence"]), "date": r["day"], "note": r["note"]} for r in rows]
 
 
@@ -532,7 +543,7 @@ def dash_state(response: Response):
     response.headers["Cache-Control"] = "no-store"
     st = compute_stats()
     with closing(db()) as c:
-        npay = c.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+        npay = c.execute("SELECT COUNT(*) FROM payments WHERE hidden=0").fetchone()[0]
     return {"summary": st["donations"]["summary"], "cruk": st["donations"]["cancer_research_uk_page"],
             "transfers": _money_rows("transfers"), "bmc": _money_rows("bmc"), "card_payments": npay,
             "total_plays": st["listening"]["total_plays"], "generated_at": st["generated_at"]}
@@ -659,20 +670,82 @@ async def dash_set_settings(b: SettingsIn):
 
 @app.get("/dash/api/transactions")
 def dash_transactions(response: Response, limit: int = 500):
-    """Every card payment (from Home Assistant, one row each) and every Buy Me a Coffee entry (webhook or manual)."""
+    """Every card payment (Home Assistant, one row each), manual payment and Buy Me a Coffee entry, including hidden ones."""
     response.headers["Cache-Control"] = "no-store"
     limit = max(1, min(limit, 2000))
     cfg = get_settings()
     out = []
     with closing(db()) as c:
-        for r in c.execute("SELECT id, amount_pence, ts, kind FROM payments"):
-            f = fee_pence(r["amount_pence"], cfg["card_fee_percent"], cfg["card_fee_fixed_pence"])
-            out.append({"type": "card", "when": r["ts"], "ref": r["id"], "source": "Home Assistant" + (" (late)" if r["kind"] == "late" else ""),
-                        "amount": pounds(r["amount_pence"]), "est_fee": pounds(f), "est_net": pounds(r["amount_pence"] - f)})
-        for r in c.execute("SELECT id, amount_pence, day, created_at, ext_id, note FROM bmc"):
+        for r in c.execute("SELECT id, amount_pence, ts, kind, hidden, manual, apply_fees, note FROM payments"):
+            f = fee_pence(r["amount_pence"], cfg["card_fee_percent"], cfg["card_fee_fixed_pence"]) if r["apply_fees"] else 0
+            if r["manual"]:
+                src = "manual" + (", fees apply" if r["apply_fees"] else ", no fees") + (f" - {r['note']}" if r["note"] else "")
+            else:
+                src = "Home Assistant" + (" (late)" if r["kind"] == "late" else "")
+            out.append({"type": "manual" if r["manual"] else "card", "key": r["id"], "when": r["ts"], "ref": r["id"], "source": src,
+                        "hidden": bool(r["hidden"]), "amount": pounds(r["amount_pence"]), "est_fee": pounds(f),
+                        "est_net": pounds(r["amount_pence"] - f)})
+        for r in c.execute("SELECT id, amount_pence, day, ext_id, note, hidden FROM bmc"):
             f = fee_pence(r["amount_pence"], cfg["bmc_fee_percent"], cfg["bmc_fee_fixed_pence"])
-            out.append({"type": "coffee", "when": r["day"], "ref": r["ext_id"] or f"manual-{r['id']}",
+            out.append({"type": "coffee", "key": str(r["id"]), "when": r["day"], "ref": r["ext_id"] or f"manual-{r['id']}",
                         "source": "webhook" if r["ext_id"] else "manual" + (f" - {r['note']}" if r["note"] else ""),
-                        "amount": pounds(r["amount_pence"]), "est_fee": pounds(f), "est_net": pounds(r["amount_pence"] - f)})
+                        "hidden": bool(r["hidden"]), "amount": pounds(r["amount_pence"]), "est_fee": pounds(f),
+                        "est_net": pounds(r["amount_pence"] - f)})
     out.sort(key=lambda x: x["when"], reverse=True)
     return {"count": len(out), "shown": min(len(out), limit), "transactions": out[:limit]}
+
+
+class HideIn(BaseModel):
+    hidden: bool
+
+
+def _tx_table(kind: str) -> str:
+    if kind in ("card", "manual"):
+        return "payments"
+    if kind == "coffee":
+        return "bmc"
+    raise HTTPException(404, "unknown transaction type")
+
+
+@app.post("/dash/api/transactions/{kind}/{key}/hidden")
+def dash_hide(kind: str, key: str, b: HideIn):
+    """Hidden rows stay in the log but are excluded from every total."""
+    t = _tx_table(kind)
+    with closing(db()) as c, c:
+        cur = c.execute(f"UPDATE {t} SET hidden=? WHERE {'id' if t == 'bmc' else 'id'}=?", (1 if b.hidden else 0, key))
+    if not cur.rowcount:
+        raise HTTPException(404, "not found")
+    return {"ok": True}
+
+
+@app.delete("/dash/api/transactions/{kind}/{key}")
+def dash_delete_tx(kind: str, key: str):
+    """Permanent. For Home Assistant payments prefer hiding: a later retry of the same payment would re-add a deleted one."""
+    t = _tx_table(kind)
+    with closing(db()) as c, c:
+        cur = c.execute(f"DELETE FROM {t} WHERE id=?", (key,))
+    if not cur.rowcount:
+        raise HTTPException(404, "not found")
+    return {"ok": True}
+
+
+class ManualPaymentIn(BaseModel):
+    amount: Decimal
+    date: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=120)
+    apply_fees: bool = False       # cash: no card fee. Tick for a card payment the reader app did not report.
+
+
+@app.post("/dash/api/payments")
+def dash_add_payment(m: ManualPaymentIn):
+    """Manual payment (e.g. cash in hand). Counted in the card total and split exactly like card payments."""
+    pence = to_pence(m.amount)
+    if not (1 <= pence <= 1_000_000):
+        raise HTTPException(422, "amount out of range")
+    day = _day(m.date)
+    ts = now_iso() if day == datetime.now(timezone.utc).date().isoformat() else f"{day}T12:00:00+00:00"
+    pid = "manual-" + uuid.uuid4().hex[:12]
+    with closing(db()) as c, c:
+        c.execute("INSERT INTO payments(id,amount_pence,ts,kind,tx_code,created_at,manual,apply_fees,note) VALUES(?,?,?,?,?,?,?,?,?)",
+                  (pid, pence, ts, "manual", None, now_iso(), 1, 1 if m.apply_fees else 0, (m.note or "").strip() or None))
+    return {"ok": True, "id": pid}

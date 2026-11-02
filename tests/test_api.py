@@ -132,3 +132,29 @@ def test_transactions_log():
         assert types == {"card", "coffee"} and d["count"] == len(d["transactions"])
         assert any(t["ref"] == "tx-log-1" and t["source"].startswith("Home Assistant") for t in d["transactions"])
         assert any(t["source"].startswith("manual") for t in d["transactions"])
+
+
+def test_hide_and_manual_payment():
+    with TestClient(app) as c:
+        base = c.get("/api/v1/summary").json()
+        c.post("/api/v1/events/payment", headers=H, json={"id": "hide-me-1", "amount": "50.00"})
+        r = c.post("/dash/api/payments", json={"amount": "20.00", "note": "cash tin"}).json()
+        s1 = c.get("/api/v1/summary").json()
+        assert s1["card_total"] == round(base["card_total"] + 70.0, 2) and s1["manual_total"] == round(base["manual_total"] + 20.0, 2)
+        # cash: no fees, same split as card
+        cfg = s1["settings"]; pct = cfg["charity_percent"] / 100
+        fee50 = round(50 * cfg["card_fee_percent"] / 100, 2) + cfg["card_fee_fixed_pence"] / 100
+        assert abs((s1["card_charity"] - base["card_charity"]) - pct * (20 + 50 - fee50)) < 0.02
+        tx = c.get("/dash/api/transactions").json()["transactions"]
+        assert any(t["type"] == "manual" and t["est_fee"] == 0 for t in tx)
+        assert c.post("/dash/api/transactions/card/hide-me-1/hidden", json={"hidden": True}).json()["ok"]
+        s2 = c.get("/api/v1/summary").json()
+        assert s2["card_total"] == round(base["card_total"] + 20.0, 2)
+        c.post("/api/v1/events/payment", headers=H, json={"id": "hide-me-1", "amount": "50.00"})   # HA retry stays hidden
+        assert c.get("/api/v1/summary").json()["card_total"] == s2["card_total"]
+        assert c.post("/dash/api/transactions/card/hide-me-1/hidden", json={"hidden": False}).json()["ok"]
+        assert c.get("/api/v1/summary").json()["card_total"] == s1["card_total"]
+        assert c.delete(f"/dash/api/transactions/manual/{r['id']}").json()["ok"]
+        assert c.get("/api/v1/summary").json()["card_total"] == round(base["card_total"] + 50.0, 2)
+        assert c.post("/dash/api/payments", json={"amount": "5", "apply_fees": True}).json()["ok"]
+        assert c.delete("/dash/api/transactions/card/nope").status_code == 404

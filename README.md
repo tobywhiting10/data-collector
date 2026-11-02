@@ -85,3 +85,12 @@ the spec does not say so outright, so check your first real payment. The gross `
 * **Transaction log** - every card payment (Home Assistant sends each one individually) and every coffee (webhook or manual), with estimated fee/net.
 * **Song buttons YAML** - the generated dashboard button YAML with a Copy button.
 Settings, transfers, coffees and payments are all stored in the SQLite file on the `/data` volume, so they survive restarts and redeploys as long as that volume/bind mount is kept.
+
+## Hiding, deleting and manual payments
+* Transaction log: **hide** keeps a row but excludes it from every total (use for refunds/duplicates); **unhide** restores it.
+  **delete** is permanent. Prefer hide for Home Assistant payments: a retry of the same payment would re-add a deleted one
+  (a hidden one stays hidden). Deleting a webhook coffee can likewise be re-added if Buy Me a Coffee redelivers it.
+* Manual payments (cash in hand): Overview > "Add a manual payment". Counted in `card_total` (and `manual_total`), same CRUK/project split;
+  the "transaction fees apply" box decides whether the card fee is deducted for that entry (off by default).
+* `generated_at` in the API is the moment the figures were calculated, which happens on every request (not only when songs play).
+  `/api/v1/stats` is sent with `Cache-Control: max-age=60`, so a browser or proxy may show a copy up to a minute old.
