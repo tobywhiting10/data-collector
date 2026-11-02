@@ -70,6 +70,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS external(
               name TEXT PRIMARY KEY, total_pence INTEGER NOT NULL, updated_at TEXT NOT NULL,
               origin TEXT NOT NULL, note TEXT);
+            CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS transfers(
               id INTEGER PRIMARY KEY AUTOINCREMENT, amount_pence INTEGER NOT NULL, day TEXT NOT NULL,
               note TEXT, created_at TEXT NOT NULL);
@@ -156,8 +157,28 @@ def pounds(pence: int) -> float:
 
 
 # ------------------------------------------------------------------------------ stats
-def fee_pence(amount_pence: int) -> int:
-    return int((Decimal(amount_pence) * FEE_PERCENT / 100).quantize(Decimal("1"))) + FEE_FIXED_PENCE
+SETTING_KEYS = ("charity_percent", "card_fee_percent", "card_fee_fixed_pence", "bmc_fee_percent", "bmc_fee_fixed_pence")
+
+
+def default_settings() -> dict:
+    """Environment values are the defaults; anything saved on /dash overrides them."""
+    return {"charity_percent": float(CHARITY_SHARE * 100), "card_fee_percent": float(FEE_PERCENT),
+            "card_fee_fixed_pence": FEE_FIXED_PENCE,
+            "bmc_fee_percent": float(os.environ.get("BMC_FEE_PERCENT", "5")),
+            "bmc_fee_fixed_pence": int(os.environ.get("BMC_FEE_FIXED_PENCE", "0"))}
+
+
+def get_settings() -> dict:
+    out = default_settings()
+    with closing(db()) as c:
+        for r in c.execute("SELECT key, value FROM settings"):
+            if r["key"] in out:
+                out[r["key"]] = type(out[r["key"]])(float(r["value"]))
+    return out
+
+
+def fee_pence(amount_pence: int, percent: float, fixed_pence: int) -> int:
+    return int((Decimal(amount_pence) * Decimal(str(percent)) / 100).quantize(Decimal("1"))) + fixed_pence
 
 
 def compute_stats() -> dict:
@@ -168,9 +189,14 @@ def compute_stats() -> dict:
         pays = c.execute("SELECT amount_pence FROM payments").fetchall()
         ext = {r["name"]: dict(r) for r in c.execute("SELECT * FROM external")}
         moved = c.execute("SELECT COALESCE(SUM(amount_pence),0) FROM transfers").fetchone()[0]
-        bmc_all = c.execute("SELECT COALESCE(SUM(amount_pence),0) FROM bmc").fetchone()[0]
-        bmc_2m = c.execute("SELECT COALESCE(SUM(amount_pence),0) FROM bmc WHERE day >= ?",
-                           ((datetime.now(timezone.utc).date() - timedelta(days=61)).isoformat(),)).fetchone()[0]
+        bmc_rows = c.execute("SELECT amount_pence, day FROM bmc").fetchall()
+    cfg = get_settings()
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=61)).isoformat()
+    bmc_fee = lambda a: fee_pence(a, cfg["bmc_fee_percent"], cfg["bmc_fee_fixed_pence"])
+    bmc_all = sum(r["amount_pence"] for r in bmc_rows)
+    bmc_all_fees = sum(bmc_fee(r["amount_pence"]) for r in bmc_rows)
+    bmc_2m = sum(r["amount_pence"] for r in bmc_rows if r["day"] >= cutoff)
+    bmc_2m_fees = sum(bmc_fee(r["amount_pence"]) for r in bmc_rows if r["day"] >= cutoff)
 
     # ---- songs
     per = {s["file"]: {"plays": 0, "seconds": 0, "last_played": None, "visitor_plays": 0} for s in cat}
@@ -208,9 +234,9 @@ def compute_stats() -> dict:
 
     # ---- card money (integer pence)
     gross = sum(p["amount_pence"] for p in pays)
-    fees = sum(fee_pence(p["amount_pence"]) for p in pays)
+    fees = sum(fee_pence(p["amount_pence"], cfg["card_fee_percent"], cfg["card_fee_fixed_pence"]) for p in pays)
     net = gross - fees
-    charity_card = int((Decimal(net) * CHARITY_SHARE).quantize(Decimal("1")))
+    charity_card = int((Decimal(net) * Decimal(str(cfg["charity_percent"])) / 100).quantize(Decimal("1")))
     project_card = net - charity_card
 
     cruk = ext.get("cruk_page", {}).get("total_pence", 0)
@@ -225,11 +251,15 @@ def compute_stats() -> dict:
         "card_total": pounds(gross),
         "card_charity": pounds(charity_card),
         "card_project": pounds(project_card),
-        "card_charity_pending": pounds(charity_card - moved),   # charity share not yet moved to CRUK
+        "amount_to_pay_cruk": pounds(charity_card - moved),     # charity share of card money not yet moved to CRUK
+        "card_charity_pending": pounds(charity_card - moved),   # same value (older name)
         "moved_to_cruk": pounds(moved),
-        "bmc_last_2_months": pounds(bmc_2m),
+        "bmc_last_2_months": pounds(bmc_2m),                    # gross
+        "bmc_last_2_months_net": pounds(bmc_2m - bmc_2m_fees),  # after the estimated BMC fee
         "bmc_total": pounds(bmc_all),
-        "project_total": pounds(project_card + bmc_all),        # 10% card share + all Buy Me a Coffee
+        "bmc_total_net": pounds(bmc_all - bmc_all_fees),
+        "project_total": pounds(project_card + bmc_all - bmc_all_fees),   # project share of card + all BMC after fees
+        "settings": cfg,
     }
 
     def ext_out(name):
@@ -266,8 +296,8 @@ def compute_stats() -> dict:
                 "net_after_fees": pounds(net),
                 "to_charity": pounds(charity_card),
                 "to_project": pounds(project_card),
-                "charity_share": float(CHARITY_SHARE),
-                "fee_percent_assumed": float(FEE_PERCENT),
+                "charity_share": cfg["charity_percent"] / 100,
+                "fee_percent_assumed": cfg["card_fee_percent"],
             },
             "cancer_research_uk_page": ext_out("cruk_page"),
             "total_raised_for_charity": pounds(raised_charity),
@@ -304,18 +334,19 @@ def parse_cruk(html: str):
     return num(m.group(1)), (num(m.group(2)) if m.lastindex and m.lastindex >= 2 else 0)
 
 
-async def collect_cruk(client: httpx.AsyncClient) -> None:
+async def collect_cruk(client: httpx.AsyncClient) -> bool:
     """Reads the public CRUK fundraising page; stores raised + Gift Aid. Once an hour is plenty."""
     if not CRUK_URL:
-        return
+        return False
     r = await client.get(CRUK_URL, headers={"User-Agent": "BussageLightsStats/1.0 (+personal fundraising counter)"})
     r.raise_for_status()
     got = parse_cruk(r.text)
     if not got:
         log.warning("CRUK page text did not match CRUK_REGEX; keeping the previous total")
-        return
+        return False
     raised, ga = got
     set_external("cruk_page", raised + ga, "scrape", json.dumps({"raised": pounds(raised), "gift_aid": pounds(ga)}))
+    return True
 
 
 async def collector_loop() -> None:
@@ -591,3 +622,57 @@ async def bmc_webhook(request: Request, x_signature_sha256: Optional[str] = Head
             cur = c.execute("DELETE FROM bmc WHERE ext_id=?", (f"payment:{pid}",))
         return {"ok": True, "removed": cur.rowcount}
     return {"ok": True, "ignored": etype or "unknown"}
+
+
+class SettingsIn(BaseModel):
+    charity_percent: float = Field(ge=0, le=100)          # share of card money (after fees) that goes to CRUK
+    card_fee_percent: float = Field(ge=0, le=20)
+    card_fee_fixed_pence: int = Field(ge=0, le=100)
+    bmc_fee_percent: float = Field(ge=0, le=30)
+    bmc_fee_fixed_pence: int = Field(ge=0, le=100)
+
+
+@app.get("/dash/api/settings")
+def dash_get_settings():
+    return get_settings()
+
+
+@app.post("/dash/api/settings")
+async def dash_set_settings(b: SettingsIn):
+    with closing(db()) as c, c:
+        for k in SETTING_KEYS:
+            c.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                      (k, str(getattr(b, k))))
+    # Everything is calculated on demand, so totals already reflect the new settings.
+    # Also pull the latest CRUK figure right now.
+    refreshed, error = False, None
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            refreshed = await collect_cruk(client)
+            if not refreshed:
+                error = "CRUK page could not be read (kept the previous figure); see the container log"
+    except Exception as e:  # noqa: BLE001
+        error = f"CRUK refresh failed: {e}"
+        log.warning(error)
+    return {"ok": True, "cruk_refreshed": refreshed, "cruk_error": error}
+
+
+@app.get("/dash/api/transactions")
+def dash_transactions(response: Response, limit: int = 500):
+    """Every card payment (from Home Assistant, one row each) and every Buy Me a Coffee entry (webhook or manual)."""
+    response.headers["Cache-Control"] = "no-store"
+    limit = max(1, min(limit, 2000))
+    cfg = get_settings()
+    out = []
+    with closing(db()) as c:
+        for r in c.execute("SELECT id, amount_pence, ts, kind FROM payments"):
+            f = fee_pence(r["amount_pence"], cfg["card_fee_percent"], cfg["card_fee_fixed_pence"])
+            out.append({"type": "card", "when": r["ts"], "ref": r["id"], "source": "Home Assistant" + (" (late)" if r["kind"] == "late" else ""),
+                        "amount": pounds(r["amount_pence"]), "est_fee": pounds(f), "est_net": pounds(r["amount_pence"] - f)})
+        for r in c.execute("SELECT id, amount_pence, day, created_at, ext_id, note FROM bmc"):
+            f = fee_pence(r["amount_pence"], cfg["bmc_fee_percent"], cfg["bmc_fee_fixed_pence"])
+            out.append({"type": "coffee", "when": r["day"], "ref": r["ext_id"] or f"manual-{r['id']}",
+                        "source": "webhook" if r["ext_id"] else "manual" + (f" - {r['note']}" if r["note"] else ""),
+                        "amount": pounds(r["amount_pence"]), "est_fee": pounds(f), "est_net": pounds(r["amount_pence"] - f)})
+    out.sort(key=lambda x: x["when"], reverse=True)
+    return {"count": len(out), "shown": min(len(out), limit), "transactions": out[:limit]}

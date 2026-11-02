@@ -23,7 +23,7 @@ Give a chat the URL and this page. Rules to follow when building counters/graphs
 
 ## Summary block (`donations.summary`, also at `GET /api/v1/summary`)
 `total` (CRUK + card gross - moved to CRUK), `cruk_only`, `card_total`, `card_charity`, `card_project`,
-`card_charity_pending`, `moved_to_cruk`, `bmc_last_2_months`, `bmc_total`, `project_total` (card_project + bmc_total).
+`amount_to_pay_cruk`, `moved_to_cruk`, `bmc_last_2_months`, `bmc_last_2_months_net`, `bmc_total`, `bmc_total_net`, `project_total` (card_project + bmc_total_net), `settings` (current ratio/fees).
 These are entered/derived via the admin page; if the user wants a single headline "raised" number, use `summary.total`.
 
 ## Example

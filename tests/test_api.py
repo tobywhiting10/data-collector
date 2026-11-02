@@ -70,7 +70,7 @@ def test_dash_and_summary():
         assert m["cruk_only"] == 100.0 and m["card_total"] >= 23.0 and m["moved_to_cruk"] == 20.0
         assert m["total"] == round(100.0 + m["card_total"] - 20.0, 2)
         assert m["bmc_last_2_months"] == 3.0 and m["bmc_total"] == 10.5
-        assert m["project_total"] == round(m["card_project"] + 10.5, 2)
+        assert m["project_total"] == round(m["card_project"] + m["bmc_total_net"], 2) and m["bmc_total_net"] < 10.5
         st = c.get("/dash/api/state").json()
         assert len(st["transfers"]) == 1 and len(st["bmc"]) == 2
         assert "<title>" in c.get("/dash").text
@@ -99,3 +99,36 @@ def test_bmc_webhook():
         assert send(c, {**ev, "type": "donation.refunded"}).json()["removed"] == 1
         assert c.get("/api/v1/summary").json()["bmc_total"] == before
         assert send(c, {**ev, "type": "recurring_donation.started"}).json()["ignored"] == "recurring_donation.started"
+
+
+def test_settings_change_recalculates():
+    import app.main as m
+    async def fake(client):
+        return True
+    orig = m.collect_cruk; m.collect_cruk = fake
+    try:
+        with TestClient(app) as c:
+            c.post("/api/v1/events/payment", headers=H, json={"id": "set-pay-1", "amount": "100.00"})
+            a = c.get("/api/v1/summary").json()
+            r = c.post("/dash/api/settings", json={"charity_percent": 50, "card_fee_percent": 0, "card_fee_fixed_pence": 0,
+                                                    "bmc_fee_percent": 0, "bmc_fee_fixed_pence": 0}).json()
+            assert r["ok"] and r["cruk_refreshed"] is True
+            b = c.get("/api/v1/summary").json()
+            assert b["card_charity"] == round(a["card_total"] * 0.5, 2) and b["card_project"] == b["card_charity"]
+            assert b["amount_to_pay_cruk"] == round(b["card_charity"] - b["moved_to_cruk"], 2)
+            assert b["bmc_total_net"] == b["bmc_total"]
+            assert c.post("/dash/api/settings", json={"charity_percent": 101, "card_fee_percent": 0, "card_fee_fixed_pence": 0,
+                                                       "bmc_fee_percent": 0, "bmc_fee_fixed_pence": 0}).status_code == 422
+    finally:
+        m.collect_cruk = orig
+
+
+def test_transactions_log():
+    with TestClient(app) as c:
+        c.post("/api/v1/events/payment", headers=H, json={"id": "tx-log-1", "amount": "3.00"})
+        c.post("/dash/api/bmc", json={"amount": "2.00", "note": "renewal"})
+        d = c.get("/dash/api/transactions").json()
+        types = {t["type"] for t in d["transactions"]}
+        assert types == {"card", "coffee"} and d["count"] == len(d["transactions"])
+        assert any(t["ref"] == "tx-log-1" and t["source"].startswith("Home Assistant") for t in d["transactions"])
+        assert any(t["source"].startswith("manual") for t in d["transactions"])
