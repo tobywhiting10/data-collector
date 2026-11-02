@@ -54,3 +54,48 @@ def test_buttons_yaml():
         t = c.get("/api/v1/songs/buttons.yaml").text
     blocks = [yaml.safe_load(b.split("\n", 1)[1]) for b in t.split("# ---- ")[1:]]
     assert blocks and blocks[0][0]["type"] == "heading" and blocks[0][1]["type"] == "custom:button-card"
+
+
+def test_dash_and_summary():
+    with TestClient(app) as c:
+        for i, a in enumerate(["8.00", "5.00", "10.00"]):
+            c.post("/api/v1/events/payment", headers=H, json={"id": f"dash-pay-{i}", "amount": a})
+        assert c.post("/dash/api/cruk", json={"total": "100"}).json()["ok"]
+        assert c.post("/dash/api/transfers", json={"amount": "20.00", "note": "wk1"}).json()["ok"]
+        assert c.post("/dash/api/bmc", json={"amount": "7.50", "date": "2020-01-01"}).json()["ok"]   # old: not in 2 months
+        assert c.post("/dash/api/bmc", json={"amount": "3.00"}).json()["ok"]
+        assert c.post("/dash/api/transfers", json={"amount": "-1"}).status_code == 422
+        assert c.post("/dash/api/bmc", json={"amount": "1", "date": "bad"}).status_code == 422
+        m = c.get("/api/v1/summary").json()
+        assert m["cruk_only"] == 100.0 and m["card_total"] >= 23.0 and m["moved_to_cruk"] == 20.0
+        assert m["total"] == round(100.0 + m["card_total"] - 20.0, 2)
+        assert m["bmc_last_2_months"] == 3.0 and m["bmc_total"] == 10.5
+        assert m["project_total"] == round(m["card_project"] + 10.5, 2)
+        st = c.get("/dash/api/state").json()
+        assert len(st["transfers"]) == 1 and len(st["bmc"]) == 2
+        assert "<title>" in c.get("/dash").text
+        c.delete(f"/dash/api/transfers/{st['transfers'][0]['id']}")
+        assert c.get("/api/v1/summary").json()["moved_to_cruk"] == 0.0
+
+
+def test_bmc_webhook():
+    import hmac as _h, hashlib, json as _j
+    import app.main as m
+    m.BMC_WEBHOOK_SECRET = "whsec_test"
+    def send(c, ev, sig=True):
+        raw = _j.dumps(ev).encode()
+        sg = _h.new(b"whsec_test", raw, hashlib.sha256).hexdigest() if sig else "bad"
+        return c.post("/api/v1/webhooks/bmc", content=raw, headers={"x-signature-sha256": sg, "Content-Type": "application/json"})
+    with TestClient(app) as c:
+        before = c.get("/api/v1/summary").json()["bmc_total"]
+        ev = {"event_id": 1, "type": "donation.created", "live_mode": True, "created": 1719825600, "attempt": 1,
+              "data": {"id": 777001, "amount": 15.0, "currency": "GBP", "created_at": 1719825600}}
+        assert send(c, ev, sig=False).status_code == 401
+        assert send(c, ev).json()["stored"] is True
+        assert send(c, ev).json()["stored"] is False                      # retry is idempotent
+        assert c.get("/api/v1/summary").json()["bmc_total"] == round(before + 15.0, 2)
+        assert send(c, {**ev, "data": {**ev["data"], "id": 777002, "currency": "USD"}}).json()["ignored"] == "currency"
+        assert "test event" in send(c, {**ev, "live_mode": False}).json()["ignored"]
+        assert send(c, {**ev, "type": "donation.refunded"}).json()["removed"] == 1
+        assert c.get("/api/v1/summary").json()["bmc_total"] == before
+        assert send(c, {**ev, "type": "recurring_donation.started"}).json()["ignored"] == "recurring_donation.started"

@@ -49,3 +49,28 @@ Back up the `bussage-data` volume (SQLite database). To change songs, edit `song
    dashboard column. (Everything else follows by itself: the stats catalogue, the website feed, and HA's
    song picker `input_select.christmas_songs`, which `ha/bussage_stats.yaml` extends within ~15 minutes
    or on HA restart. It only adds options; remove old ones by hand.)
+
+## Admin page `/dash`
+`https://stats.YOUR-DOMAIN/dash`: KPIs, plus forms to enter **money moved from the card reader to CRUK**,
+**Buy Me a Coffee** amounts (dated; the "last 2 months" figure sums the last ~2 months) and a manual CRUK total override.
+It has **no authentication in the app**: protect the whole `/dash` prefix at your reverse proxy (it covers the
+page and `/dash/api/*`). The public feed endpoints (`/api/v1/...`) must stay reachable by your website and HA.
+Definitions (also in `GET /api/v1/summary` and `donations.summary` in `/api/v1/stats`):
+* `total` = CRUK page + card (gross) - moved to CRUK (moved money is already inside the CRUK figure)
+* `cruk_only`, `card_total` (gross), `card_charity` (90% after estimated fees), `card_project`
+* `card_charity_pending` = card_charity - moved_to_cruk; `moved_to_cruk`
+* `bmc_last_2_months`, `bmc_total` (all entries); `project_total` = card_project + bmc_total (assumes Buy Me a Coffee money goes to the project)
+Buy Me a Coffee arrives by webhook (below); the form on `/dash` is for corrections or anything the webhook missed.
+
+## Buy Me a Coffee webhook
+1. Set `BMC_WEBHOOK_SECRET` (stack environment variable). In BMC: Integrations > New webhook,
+   URL `https://stats.YOUR-DOMAIN/api/v1/webhooks/bmc`, events: `donation.created`, `donation.refunded`
+   (add `extra_purchase.*`, `commission_order.*`, `wishlist_payment.*` if you use those). Copy the webhook's
+   signing secret into `BMC_WEBHOOK_SECRET` and redeploy.
+2. This path must be reachable by the internet and NOT behind your `/dash` protection; it is secured by the
+   HMAC-SHA256 signature (`x-signature-sha256`) instead.
+3. Use "Send test event" in BMC: a signed test returns "test event (signature verified)" and is not stored.
+Notes: payments in a currency other than `BMC_CURRENCY` (GBP) are ignored (logged); refunds remove the entry;
+recurring donations/memberships only send start/update/cancel events, so their renewals are NOT counted
+(enter those by hand on `/dash`). Amounts are assumed to be in major units (pounds), per the BMC spec's example;
+the spec does not say so outright, so check your first real payment. The gross `amount` is used, not net of BMC fees.

@@ -37,6 +37,8 @@ FEE_PERCENT = Decimal(os.environ.get("FEE_PERCENT", "1.69"))       # SumUp pay-a
 FEE_FIXED_PENCE = int(os.environ.get("FEE_FIXED_PENCE", "0"))
 CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
 COLLECT_INTERVAL_MIN = int(os.environ.get("COLLECT_INTERVAL_MIN", "60"))
+BMC_WEBHOOK_SECRET = os.environ.get("BMC_WEBHOOK_SECRET", "")   # signing secret from the BMC webhook page
+BMC_CURRENCY = os.environ.get("BMC_CURRENCY", "GBP").upper()
 CRUK_URL = os.environ.get("CRUK_URL", "https://fundraise.cancerresearchuk.org/page/bussage-christmas-lights-show")
 # Applied to the page TEXT (tags stripped). Group 1 = total raised, optional group 2 = Gift Aid.
 # Matches e.g. "Total raised £12.50 + £3.12 Gift Aid". Override with CRUK_REGEX if the wording changes.
@@ -68,9 +70,24 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS external(
               name TEXT PRIMARY KEY, total_pence INTEGER NOT NULL, updated_at TEXT NOT NULL,
               origin TEXT NOT NULL, note TEXT);
+            CREATE TABLE IF NOT EXISTS transfers(
+              id INTEGER PRIMARY KEY AUTOINCREMENT, amount_pence INTEGER NOT NULL, day TEXT NOT NULL,
+              note TEXT, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS bmc(
+              id INTEGER PRIMARY KEY AUTOINCREMENT, amount_pence INTEGER NOT NULL, day TEXT NOT NULL,
+              note TEXT, created_at TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS idx_plays_started ON plays(started_at);
             """
         )
+
+
+def migrate_db() -> None:
+    """Add the webhook de-duplication column to databases created before it existed."""
+    with closing(db()) as c, c:
+        cols = [r["name"] for r in c.execute("PRAGMA table_info(bmc)")]
+        if "ext_id" not in cols:
+            c.execute("ALTER TABLE bmc ADD COLUMN ext_id TEXT")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_bmc_ext ON bmc(ext_id)")
 
 
 def now_iso() -> str:
@@ -150,6 +167,10 @@ def compute_stats() -> dict:
         plays = c.execute("SELECT file, started_at, seconds, source FROM plays").fetchall()
         pays = c.execute("SELECT amount_pence FROM payments").fetchall()
         ext = {r["name"]: dict(r) for r in c.execute("SELECT * FROM external")}
+        moved = c.execute("SELECT COALESCE(SUM(amount_pence),0) FROM transfers").fetchone()[0]
+        bmc_all = c.execute("SELECT COALESCE(SUM(amount_pence),0) FROM bmc").fetchone()[0]
+        bmc_2m = c.execute("SELECT COALESCE(SUM(amount_pence),0) FROM bmc WHERE day >= ?",
+                           ((datetime.now(timezone.utc).date() - timedelta(days=61)).isoformat(),)).fetchone()[0]
 
     # ---- songs
     per = {s["file"]: {"plays": 0, "seconds": 0, "last_played": None, "visitor_plays": 0} for s in cat}
@@ -196,6 +217,20 @@ def compute_stats() -> dict:
     # Card money is transferred by hand to the CRUK page, so it is already INSIDE the CRUK total
     # once transferred. The headline charity figure is therefore the CRUK page alone (incl. Gift Aid).
     raised_charity = cruk
+    # Summary for the admin page / website. Card money moved to CRUK is inside the CRUK total already,
+    # so it is subtracted once: total = CRUK + card (gross) - moved.
+    summary = {
+        "total": pounds(cruk + gross - moved),
+        "cruk_only": pounds(cruk),
+        "card_total": pounds(gross),
+        "card_charity": pounds(charity_card),
+        "card_project": pounds(project_card),
+        "card_charity_pending": pounds(charity_card - moved),   # charity share not yet moved to CRUK
+        "moved_to_cruk": pounds(moved),
+        "bmc_last_2_months": pounds(bmc_2m),
+        "bmc_total": pounds(bmc_all),
+        "project_total": pounds(project_card + bmc_all),        # 10% card share + all Buy Me a Coffee
+    }
 
     def ext_out(name):
         e = ext.get(name)
@@ -236,6 +271,7 @@ def compute_stats() -> dict:
             },
             "cancer_research_uk_page": ext_out("cruk_page"),
             "total_raised_for_charity": pounds(raised_charity),
+            "summary": summary,
         },
     }
 
@@ -300,6 +336,7 @@ async def lifespan(_: FastAPI):
     if not API_KEY or len(API_KEY) < 16:
         raise RuntimeError("API_KEY must be set (at least 16 characters)")
     init_db()
+    migrate_db()
     load_catalogue()
     task = asyncio.create_task(collector_loop())
     yield
@@ -319,6 +356,12 @@ def health():
 def stats(response: Response):
     response.headers["Cache-Control"] = "public, max-age=60"
     return compute_stats()
+
+
+@app.get("/api/v1/summary")
+def summary(response: Response):
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return compute_stats()["donations"]["summary"]
 
 
 @app.get("/api/v1/songs")
@@ -406,3 +449,145 @@ def post_external(name: str, body: ExternalIn):
 def reload_catalogue():
     _catalogue_cache["mtime"] = None
     return {"songs": len(load_catalogue())}
+
+
+# ------------------------------------------------------------------------------ /dash (admin page)
+# NO authentication here by design: protect the whole /dash prefix (page AND /dash/api/*) at the reverse proxy.
+from .dash_page import DASH_HTML  # noqa: E402
+
+
+class MoneyIn(BaseModel):
+    amount: Decimal
+    date: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=120)
+
+
+class CrukIn(BaseModel):
+    total: Decimal
+
+
+def _day(d: Optional[str]) -> str:
+    if not d:
+        return datetime.now(timezone.utc).date().isoformat()
+    try:
+        return datetime.strptime(d, "%Y-%m-%d").date().isoformat()
+    except ValueError:
+        raise HTTPException(422, "date must be YYYY-MM-DD")
+
+
+def _money_rows(table: str) -> list[dict]:
+    with closing(db()) as c:
+        rows = c.execute(f"SELECT id, amount_pence, day, note FROM {table} ORDER BY day DESC, id DESC LIMIT 200").fetchall()
+    return [{"id": r["id"], "amount": pounds(r["amount_pence"]), "date": r["day"], "note": r["note"]} for r in rows]
+
+
+def _add_money(table: str, m: MoneyIn) -> dict:
+    pence = to_pence(m.amount)
+    if not (1 <= pence <= 10_000_000):
+        raise HTTPException(422, "amount out of range")
+    with closing(db()) as c, c:
+        c.execute(f"INSERT INTO {table}(amount_pence,day,note,created_at) VALUES(?,?,?,?)",
+                  (pence, _day(m.date), (m.note or "").strip() or None, now_iso()))
+    return {"ok": True}
+
+
+@app.get("/dash", response_class=Response)
+def dash_page():
+    return Response(DASH_HTML, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/dash/api/state")
+def dash_state(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    st = compute_stats()
+    with closing(db()) as c:
+        npay = c.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+    return {"summary": st["donations"]["summary"], "cruk": st["donations"]["cancer_research_uk_page"],
+            "transfers": _money_rows("transfers"), "bmc": _money_rows("bmc"), "card_payments": npay,
+            "total_plays": st["listening"]["total_plays"], "generated_at": st["generated_at"]}
+
+
+@app.post("/dash/api/transfers")
+def dash_add_transfer(m: MoneyIn):
+    return _add_money("transfers", m)
+
+
+@app.post("/dash/api/bmc")
+def dash_add_bmc(m: MoneyIn):
+    return _add_money("bmc", m)
+
+
+@app.delete("/dash/api/transfers/{rid}")
+def dash_del_transfer(rid: int):
+    with closing(db()) as c, c:
+        c.execute("DELETE FROM transfers WHERE id=?", (rid,))
+    return {"ok": True}
+
+
+@app.delete("/dash/api/bmc/{rid}")
+def dash_del_bmc(rid: int):
+    with closing(db()) as c, c:
+        c.execute("DELETE FROM bmc WHERE id=?", (rid,))
+    return {"ok": True}
+
+
+@app.post("/dash/api/cruk")
+def dash_set_cruk(b: CrukIn):
+    pence = to_pence(b.total)
+    if not (0 <= pence <= 100_000_000):
+        raise HTTPException(422, "amount out of range")
+    set_external("cruk_page", pence, "manual", json.dumps({"raised": pounds(pence), "gift_aid": 0.0}))
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------------------ Buy Me a Coffee webhook
+# Public URL (BMC cannot send our API key); authenticity is proven by the HMAC-SHA256 signature of the raw body.
+# Counts one-time payments (donations, shop items, commissions, wishlist). Refund events remove the entry.
+# Recurring donations/memberships only send start/update/cancel events (no per-renewal event), so they are NOT counted.
+from fastapi import Request  # noqa: E402
+
+BMC_PAYMENT_EVENTS = {"donation.created", "extra_purchase.created", "commission_order.created", "wishlist_payment.created"}
+BMC_REFUND_EVENTS = {"donation.refunded", "extra_purchase.refunded", "commission_order.refunded", "wishlist_payment.refunded"}
+
+
+def _bmc_signature_ok(raw: bytes, header: Optional[str]) -> bool:
+    if not BMC_WEBHOOK_SECRET or not header:
+        return False
+    want = hmac.new(BMC_WEBHOOK_SECRET.encode(), raw, "sha256").hexdigest()
+    got = header.strip().lower().removeprefix("sha256=")
+    return hmac.compare_digest(want, got)
+
+
+@app.post("/api/v1/webhooks/bmc")
+async def bmc_webhook(request: Request, x_signature_sha256: Optional[str] = Header(default=None)):
+    if not BMC_WEBHOOK_SECRET:
+        raise HTTPException(503, "BMC_WEBHOOK_SECRET is not configured")
+    raw = await request.body()
+    if not _bmc_signature_ok(raw, x_signature_sha256):
+        raise HTTPException(401, "bad signature")
+    try:
+        ev = json.loads(raw)
+        etype, data = str(ev.get("type", "")), ev.get("data") or {}
+    except (ValueError, AttributeError):
+        raise HTTPException(400, "bad json")
+    if ev.get("live_mode") is False:
+        return {"ok": True, "ignored": "test event (signature verified)"}
+    pid = data.get("id")
+    if etype in BMC_PAYMENT_EVENTS and pid is not None:
+        if str(data.get("currency", "")).upper() != BMC_CURRENCY:
+            log.warning("BMC event %s ignored: currency %s != %s", ev.get("event_id"), data.get("currency"), BMC_CURRENCY)
+            return {"ok": True, "ignored": "currency"}
+        pence = to_pence(Decimal(str(data.get("amount", 0))))
+        if pence <= 0:
+            return {"ok": True, "ignored": "zero amount"}
+        created = data.get("created_at") or ev.get("created")
+        day = datetime.fromtimestamp(int(created), timezone.utc).date().isoformat() if created else _day(None)
+        with closing(db()) as c, c:
+            cur = c.execute("INSERT OR IGNORE INTO bmc(amount_pence,day,note,created_at,ext_id) VALUES(?,?,?,?,?)",
+                            (pence, day, f"webhook {etype}", now_iso(), f"payment:{pid}"))
+        return {"ok": True, "stored": cur.rowcount == 1}
+    if etype in BMC_REFUND_EVENTS and pid is not None:
+        with closing(db()) as c, c:
+            cur = c.execute("DELETE FROM bmc WHERE ext_id=?", (f"payment:{pid}",))
+        return {"ok": True, "removed": cur.rowcount}
+    return {"ok": True, "ignored": etype or "unknown"}

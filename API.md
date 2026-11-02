@@ -21,6 +21,11 @@ Give a chat the URL and this page. Rules to follow when building counters/graphs
 * `listening.human` is a ready-made "12h 40m" string; `hours` and `minutes` are the parts.
 * A "play" only counts if a song played for more than 10 seconds.
 
+## Summary block (`donations.summary`, also at `GET /api/v1/summary`)
+`total` (CRUK + card gross - moved to CRUK), `cruk_only`, `card_total`, `card_charity`, `card_project`,
+`card_charity_pending`, `moved_to_cruk`, `bmc_last_2_months`, `bmc_total`, `project_total` (card_project + bmc_total).
+These are entered/derived via the admin page; if the user wants a single headline "raised" number, use `summary.total`.
+
 ## Example
 
 ```json
