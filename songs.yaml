@@ -4,11 +4,21 @@
 # After editing, restart the container (or call POST /api/v1/reload with the API key).
 songs:
   - { file: "All-I-Want-for-Christmas-Is-You.fseq", title: "All I Want for Christmas Is You", artist: "Mariah Carey", category: "Christmas Classics", duration_seconds: "243" }
-  - { file: "Driving-Home-For-Christmas.fseq", title: "Driving Home For Christmas", artist: "Chris Rea", category: "Christmas Classics" }
-  - { file: "wham-Last-Christmas.fseq", title: "Last Christmas", artist: "Wham!", category: "Christmas Classics" }
-  - { file: "Christmas Wrapping - The Waitresses.fseq", title: "Christmas Wrapping", artist: "The Waitresses", category: "Christmas Classics" }
-  - { file: "Merry Christmas - Ed Sheeran.fseq", title: "Merry Christmas", artist: "Ed Sheeran", category: "Christmas Modern" }
-  - { file: "XMAS.fseq", title: "X.M.A.S", artist: "Kylie Minogue", category: "Christmas Modern" }
-  - { file: "Santa Tell Me - Ariana Grande.fseq", title: "Santa Tell Me", artist: "Ariana Grande", category: "Christmas Modern" }
-  - { file: "Sia - Snowman.fseq", title: "Snowman", artist: "Sia", category: "Christmas Modern" }
-  - { file: "Lou Monte - Dominick The Donkey HQ Audio.fseq", title: "Dominick The Donkey", artist: "Lou Monte", category: "Other / Comedy" }
+  - { file: "Driving-Home-For-Christmas.fseq", title: "Driving Home For Christmas", artist: "Chris Rea", category: "Christmas Classics", duration_seconds: "240" }
+  - { file: "Christmas Wrapping - The Waitresses.fseq", title: "Christmas Wrapping", artist: "The Waitresses", category: "Christmas Classics", duration_seconds: "315" }
+  - { file: "wham-Last-Christmas.fseq", title: "Last Christmas", artist: "Wham!", category: "Christmas Classics", duration_seconds: "262" }
+
+  
+  
+  - { file: "XMAS.fseq", title: "X.M.A.S", artist: "Kylie Minogue", category: "Christmas Modern", duration_seconds: "196" }
+  - { file: "Santa Tell Me - Ariana Grande.fseq", title: "Santa Tell Me", artist: "Ariana Grande", category: "Christmas Modern", duration_seconds: "203" }
+  - { file: "Sia - Snowman.fseq", title: "Snowman", artist: "Sia", category: "Christmas Modern", duration_seconds: "164" }
+  - { file: "Merry Christmas - Ed Sheeran.fseq", title: "Merry Christmas", artist: "Ed Sheeran", category: "Christmas Modern", duration_seconds: "208" }
+  
+
+  - { file: "Last Christmas (Techno Remix) - Gabriel Wittner.fseq", title: "Last Christmas EDM Dance MIX", artist: "Wham! (Mix)", category: "Other / Comedy", duration_seconds: "93" }
+  - { file: "Lou Monte - Dominick The Donkey HQ Audio.fseq", title: "Dominick The Donkey", artist: "Lou Monte", category: "Other / Comedy", duration_seconds: "243" }
+  - { file: "steves lava chicken.fseq", title: "Steve's Lava Chicken ", artist: "The Minecraft movie ", category: "Other / Comedy", duration_seconds: "52" }
+  
+  
+  
