@@ -72,7 +72,7 @@ select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var
 <div style="overflow-x:auto"><table id="t-tx"></table></div></section></div>
 <div id="pg-yaml" hidden><section><h2>Full Home Assistant dashboard</h2>
 <div class="small" style="margin-bottom:8px">1. Paste your <b>base configuration</b> (kiosk settings + your admin/Home tab) below. It is remembered. 2. Press <b>Generate</b>: the Outdoor tab (all song buttons from songs.yaml, donate page, etc.) is added and the whole dashboard is shown, ready to paste into Home Assistant's raw configuration editor. Comments in the base are not kept, and any manual edits to the Outdoor tab in Home Assistant are replaced.</div>
-<form><label class="small">Person entity for the Request help button<br><input id="d-person" placeholder="person.name" style="width:240px"></label></form>
+<div class="small" style="margin-bottom:8px">Who can help (Request help button) is set in Home Assistant, in the helper <code>input_text.help_person_entity</code> (comma-separated person entities, e.g. <code>person.toby, person.sam</code>). Add that helper to your admin tab.</div>
 <div class="small">Base configuration</div>
 <textarea id="d-base" spellcheck="false" style="width:100%;height:28vh;font:12px/1.3 monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
 <form style="margin-top:8px"><button type="button" id="d-gen">Generate full dashboard</button><button type="button" id="d-copy">Copy</button><button type="button" id="d-btns" class="x">Buttons only</button><span class="small" id="d-msg"></span></form>
@@ -122,9 +122,9 @@ async function loadTx(){const f=$("tx-filter").value,d=await api("GET","/dash/ap
   a.append(hb,db)}
  $("tx-count").textContent=n+" shown"+(h?", "+h+" hidden":"")+(d.count>d.shown?" (latest "+d.shown+" of "+d.count+")":"")}
 $("tx-filter").onchange=loadTx;
-async function loadDash(){const d=await api("GET","/dash/api/dashboard");$("d-base").value=d.base;$("d-person").value=d.person;$("d-msg").textContent=d.saved?"":"Showing an example base: replace it with your own."}
+async function loadDash(){const d=await api("GET","/dash/api/dashboard");$("d-base").value=d.base;$("d-msg").textContent=d.saved?"":"Showing an example base: replace it with your own."}
 $("d-gen").onclick=async()=>{const m=$("d-msg");m.className="small";m.textContent="Generating...";
- try{const r=await api("POST","/dash/api/dashboard",{base:$("d-base").value,person:$("d-person").value});$("d-out").value=r.yaml;m.textContent="Done - base saved."}
+ try{const r=await api("POST","/dash/api/dashboard",{base:$("d-base").value});$("d-out").value=r.yaml;m.textContent="Done - base saved."}
  catch(e){m.className="small err";m.textContent=e.message}};
 $("d-btns").onclick=async()=>{const r=await fetch("/api/v1/songs/buttons.yaml");$("d-out").value=await r.text();$("d-msg").textContent="Buttons only (no tab around them)."};
 $("d-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("d-out").value);$("d-msg").textContent="Copied"}catch(e){$("d-out").select();$("d-msg").textContent="Press Ctrl+C to copy"}};

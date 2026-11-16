@@ -65,6 +65,8 @@ views:
       - entity: input_number.donation_max
       - entity: input_number.donation_default_amount
       - entity: input_number.donation_return_seconds
+      - entity: input_text.help_person_entity
+        name: Who can help (person entities, comma separated)
       - entity: input_boolean.donation_autostart
         name: Auto-start card payment when Donate by card is pressed
       - type: button

@@ -762,6 +762,7 @@ def dash_add_payment(m: ManualPaymentIn):
 # the bundled template (app/outdoor_view.yaml) with one song column per category from songs.yaml.
 # Comments in the base are not preserved (it is re-serialised). Manual edits to the Outdoor tab in HA are overwritten
 # on the next paste: change app/outdoor_view.yaml instead.
+# Who counts as "available to help" is NOT in the dashboard: it is the HA helper input_text.help_person_entity.
 import copy  # noqa: E402
 
 _APP_DIR = Path(__file__).parent
@@ -788,7 +789,7 @@ def _kv_set(key: str, value: str) -> None:
         c.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
 
-def build_dashboard(base_text: str, person: str) -> str:
+def build_dashboard(base_text: str) -> str:
     try:
         base = yaml.safe_load(base_text) or {}
     except yaml.YAMLError as e:
@@ -808,11 +809,11 @@ def build_dashboard(base_text: str, person: str) -> str:
         cards = [{"type": "heading", "heading": cat, "heading_style": "title"}] + [_button(x) for x in songs]
         if i < 3:
             col = copy.deepcopy(proto)
-            col["card"]["cards"] = cards
+            col["cards"] = cards
             cols.append(col)
         else:
-            cols[2]["card"]["cards"].extend(cards)
-    tpl = (_APP_DIR / "outdoor_view.yaml").read_text(encoding="utf-8").replace("__PERSON__", person.strip() or "person.CHANGE_ME")
+            cols[2]["cards"].extend(cards)
+    tpl = (_APP_DIR / "outdoor_view.yaml").read_text(encoding="utf-8")
     view = yaml.safe_load(tpl)
     hs = view["cards"][0]["cards"][1]["card"]["cards"][1]["cards"]
     hs[:1] = cols
@@ -824,19 +825,16 @@ def build_dashboard(base_text: str, person: str) -> str:
 
 class DashboardIn(BaseModel):
     base: str = Field(max_length=200_000)
-    person: str = Field(default="", max_length=100)
 
 
 @app.get("/dash/api/dashboard")
 def dash_dashboard_get():
     base = _kv_get("dashboard_base")
-    return {"base": base or (_APP_DIR / "base_example.yaml").read_text(encoding="utf-8"), "saved": bool(base),
-            "person": _kv_get("dashboard_person", "person.CHANGE_ME")}
+    return {"base": base or (_APP_DIR / "base_example.yaml").read_text(encoding="utf-8"), "saved": bool(base)}
 
 
 @app.post("/dash/api/dashboard")
 def dash_dashboard_build(b: DashboardIn):
-    out = build_dashboard(b.base, b.person)      # raises 422 with a readable message on bad input
+    out = build_dashboard(b.base)      # raises 422 with a readable message on bad input
     _kv_set("dashboard_base", b.base)
-    _kv_set("dashboard_person", b.person.strip())
     return {"yaml": out}

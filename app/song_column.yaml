@@ -1,24 +1,11 @@
-type: custom:mod-card
+type: vertical-stack
 card_mod:
   style: |
     :host {
+      display: block;
       min-width: 0;
-    }
-    ha-card {
-      /* whitespace on all four sides: 16px top/bottom, 8px sides + 8px padding inside */
-      height: calc(100vh - 170px);   /* adjust if the bottom is cut off or a page scrollbar appears */
       margin: 16px 8px;
       padding: 8px;
       box-sizing: border-box;
-      overflow-y: auto;
-      overflow-x: hidden;
-      background: none;
-      box-shadow: none;
-      border: none;
     }
-card:
-  type: vertical-stack
-  cards:
-  - type: heading
-    heading: __CATEGORY__
-    heading_style: title
+cards: []
