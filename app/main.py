@@ -755,3 +755,88 @@ def dash_add_payment(m: ManualPaymentIn):
         c.execute("INSERT INTO payments(id,amount_pence,ts,kind,tx_code,created_at,manual,apply_fees,note) VALUES(?,?,?,?,?,?,?,?,?)",
                   (pid, pence, ts, "manual", None, now_iso(), 1, 1 if m.apply_fees else 0, (m.note or "").strip() or None))
     return {"ok": True, "id": pid}
+
+
+# ------------------------------------------------------------------------------ full dashboard generator
+# Takes YOUR base configuration (kiosk settings + your admin/Home view) and adds the generated "Outdoor Tab" view:
+# the bundled template (app/outdoor_view.yaml) with one song column per category from songs.yaml.
+# Comments in the base are not preserved (it is re-serialised). Manual edits to the Outdoor tab in HA are overwritten
+# on the next paste: change app/outdoor_view.yaml instead.
+import copy  # noqa: E402
+
+_APP_DIR = Path(__file__).parent
+
+
+def _yaml_dump(data) -> str:
+    class D(yaml.SafeDumper):
+        pass
+
+    def lit(dumper, v):
+        return dumper.represent_scalar("tag:yaml.org,2002:str", v, style="|" if "\n" in v else None)
+    D.add_representer(str, lit)
+    return yaml.dump(data, Dumper=D, sort_keys=False, allow_unicode=True, width=10000)
+
+
+def _kv_get(key: str, default: str = "") -> str:
+    with closing(db()) as c:
+        r = c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return r["value"] if r else default
+
+
+def _kv_set(key: str, value: str) -> None:
+    with closing(db()) as c, c:
+        c.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+def build_dashboard(base_text: str, person: str) -> str:
+    try:
+        base = yaml.safe_load(base_text) or {}
+    except yaml.YAMLError as e:
+        raise HTTPException(422, f"base configuration is not valid YAML: {e}")
+    if not isinstance(base, dict):
+        raise HTTPException(422, "base configuration must be a YAML mapping (with a `views:` list)")
+    views = base.get("views") or []
+    if not isinstance(views, list):
+        raise HTTPException(422, "`views:` must be a list")
+    # song columns: one per category; more than 3 categories share the third column (4th column is the controls)
+    groups: dict[str, list] = {}
+    for song in load_catalogue():
+        groups.setdefault(song["category"], []).append(song)
+    proto = yaml.safe_load((_APP_DIR / "song_column.yaml").read_text(encoding="utf-8"))
+    cols: list = []
+    for i, (cat, songs) in enumerate(groups.items()):
+        cards = [{"type": "heading", "heading": cat, "heading_style": "title"}] + [_button(x) for x in songs]
+        if i < 3:
+            col = copy.deepcopy(proto)
+            col["card"]["cards"] = cards
+            cols.append(col)
+        else:
+            cols[2]["card"]["cards"].extend(cards)
+    tpl = (_APP_DIR / "outdoor_view.yaml").read_text(encoding="utf-8").replace("__PERSON__", person.strip() or "person.CHANGE_ME")
+    view = yaml.safe_load(tpl)
+    hs = view["cards"][0]["cards"][1]["card"]["cards"][1]["cards"]
+    hs[:1] = cols
+    # replace an existing Outdoor tab, otherwise append
+    views = [v for v in views if not (isinstance(v, dict) and (v.get("path") == view.get("path") or v.get("title") == view.get("title")))]
+    base["views"] = views + [view]
+    return _yaml_dump(base)
+
+
+class DashboardIn(BaseModel):
+    base: str = Field(max_length=200_000)
+    person: str = Field(default="", max_length=100)
+
+
+@app.get("/dash/api/dashboard")
+def dash_dashboard_get():
+    base = _kv_get("dashboard_base")
+    return {"base": base or (_APP_DIR / "base_example.yaml").read_text(encoding="utf-8"), "saved": bool(base),
+            "person": _kv_get("dashboard_person", "person.CHANGE_ME")}
+
+
+@app.post("/dash/api/dashboard")
+def dash_dashboard_build(b: DashboardIn):
+    out = build_dashboard(b.base, b.person)      # raises 422 with a readable message on bad input
+    _kv_set("dashboard_base", b.base)
+    _kv_set("dashboard_person", b.person.strip())
+    return {"yaml": out}

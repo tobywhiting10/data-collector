@@ -158,3 +158,21 @@ def test_hide_and_manual_payment():
         assert c.get("/api/v1/summary").json()["card_total"] == round(base["card_total"] + 50.0, 2)
         assert c.post("/dash/api/payments", json={"amount": "5", "apply_fees": True}).json()["ok"]
         assert c.delete("/dash/api/transactions/card/nope").status_code == 404
+
+
+def test_dashboard_generator():
+    import yaml
+    with TestClient(app) as c:
+        g = c.get("/dash/api/dashboard").json()
+        assert "views" in g["base"] and g["person"]
+        base = "kiosk_mode:\n  non_admin_settings:\n    kiosk: true\nviews:\n- title: Home\n  cards: []\n- title: Outdoor Tab\n  path: outdoor-tab\n  cards: []\n"
+        r = c.post("/dash/api/dashboard", json={"base": base, "person": "person.toby"})
+        assert r.status_code == 200
+        d = yaml.safe_load(r.json()["yaml"])
+        assert [v["title"] for v in d["views"]] == ["Home", "Outdoor Tab"] and d["kiosk_mode"]["non_admin_settings"]["kiosk"]
+        hs = d["views"][1]["cards"][0]["cards"][1]["card"]["cards"][1]["cards"]
+        assert len(hs) == 4                                        # 3 category columns + control column
+        names = [x["name"] for col in hs[:3] for x in col["card"]["cards"] if x.get("type") == "custom:button-card"]
+        assert len(names) == 9 and "person.toby" in r.json()["yaml"] and "CHANGE_ME" not in r.json()["yaml"]
+        assert c.post("/dash/api/dashboard", json={"base": "views: [", "person": ""}).status_code == 422
+        assert c.get("/dash/api/dashboard").json()["saved"] is True

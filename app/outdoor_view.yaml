@@ -1,0 +1,1051 @@
+# Outdoor Tab view template used by the admin page's dashboard generator.
+# '__SONG_COLUMNS__' is replaced by one column per song category (from songs.yaml); '__PERSON__' by the person entity.
+type: panel
+title: Outdoor Tab
+path: outdoor-tab
+cards:
+- type: vertical-stack
+  cards:
+  - type: conditional
+    conditions:
+    - condition: state
+      entity: timer.kiosk_notice
+      state: active
+    card:
+      type: custom:button-card
+      icon: mdi:alert-circle-outline
+      show_state: false
+      triggers_update:
+      - input_text.kiosk_notice
+      name: |-
+        [[[
+          const t = states['input_text.kiosk_notice'];
+          return t ? t.state : '';
+        ]]]
+      tap_action:
+        action: call-service
+        service: timer.cancel
+        target:
+          entity_id: timer.kiosk_notice
+      extra_styles: |
+        :host {
+          position: fixed;
+          top: 20vh;
+          left: 50%;
+          transform: translateX(-50%);
+          width: min(480px, 80vw);
+          z-index: 1000;
+          display: block;
+        }
+      styles:
+        card:
+        - padding: 14px 18px
+        - border-radius: 14px
+        - background-color: '#b71c1c'
+        - box-shadow: 0 6px 24px rgba(0,0,0,0.5)
+        grid:
+        - grid-template-areas: '"i n"'
+        - grid-template-columns: 40px 1fr
+        - column-gap: 12px
+        name:
+        - white-space: normal
+        - overflow: visible
+        - text-overflow: clip
+        - text-align: left
+        - font-size: 18px
+        - font-weight: '600'
+        - color: white
+        icon:
+        - width: 32px
+        - color: white
+  - type: conditional
+    conditions:
+    - condition: state
+      entity: input_select.kiosk_page
+      state: songs
+    - condition: state
+      entity: input_boolean.song_enabled
+      state: 'on'
+    card:
+      type: vertical-stack
+      cards:
+      - type: markdown
+        content: |-
+          # Welcome To The Bussage Christmas Lights
+          Select your favourite song, then press the green **Go!** button ✨
+
+          This show is put together in support of Cancer Research UK.{% if states('sensor.bussage_raised') | is_number %} Through your donations we have managed to raise **£{{ '%.2f' | format(states('sensor.bussage_raised') | float) }}**.{% endif %}
+        card_mod:
+          style: |
+            ha-card {
+              margin: 16px 8px 0 8px;
+              text-align: center;
+            }
+      - type: horizontal-stack
+        cards:
+        - __SONG_COLUMNS__
+        - type: custom:mod-card
+          card_mod:
+            style: |
+              :host {
+                min-width: 0;
+              }
+              ha-card {
+                /* whitespace on all four sides: 16px top/bottom, 8px sides + 8px padding inside */
+                height: calc(100vh - 170px);   /* adjust if the bottom is cut off or a page scrollbar appears */
+                margin: 16px 8px;
+                padding: 8px;
+                box-sizing: border-box;
+                overflow-y: auto;
+                overflow-x: hidden;
+                background: none;
+                box-shadow: none;
+                border: none;
+              }
+          card:
+            type: vertical-stack
+            cards:
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state: success
+              card:
+                type: markdown
+                content: |
+                  # ✅ Thank you!
+                  ## Your donation was received
+            - type: heading
+              heading: Status
+              heading_style: title
+            - type: tile
+              entity: input_select.christmas_songs
+              name: 'Curently selected:'
+              vertical: false
+              tap_action:
+                action: none
+              icon_tap_action:
+                action: none
+            - type: custom:button-card
+              name: Go!
+              icon: mdi:play
+              show_state: false
+              tap_action:
+                action: call-service
+                service: automation.trigger
+                target:
+                  entity_id: automation.christmas_button_trigger
+                service_data:
+                  skip_condition: true
+              hold_action:
+                action: call-service
+                service: automation.trigger
+                target:
+                  entity_id: automation.christmas_button_trigger
+                service_data:
+                  skip_condition: true
+              extra_styles: |
+                :host {
+                  display: block;
+                  width: 100%;
+                  min-width: 0;
+                }
+              styles:
+                card:
+                - width: calc(25vw - 44px)
+                - min-width: 0
+                - min-height: 100px
+                - box-sizing: border-box
+                - padding: 8px
+                - border-radius: 16px
+                - background-color: '#2e7d32'
+                grid:
+                - grid-template-areas: '"i" "n"'
+                - grid-template-columns: 1fr
+                - grid-template-rows: auto auto
+                - row-gap: 4px
+                name:
+                - white-space: normal
+                - overflow: visible
+                - text-overflow: clip
+                - text-align: center
+                - line-height: 1.2
+                - font-weight: 600
+                - font-size: clamp(14px, 1.5vw, 22px)
+                - color: white
+                icon:
+                - width: 40px
+                - color: white
+            - type: custom:button-card
+              name: Stop
+              icon: mdi:stop-circle
+              show_state: false
+              tap_action:
+                action: call-service
+                service: input_select.select_option
+                service_data:
+                  entity_id: input_select.christmas_songs
+                  option: Stop
+              hold_action:
+                action: call-service
+                service: input_select.select_option
+                service_data:
+                  entity_id: input_select.christmas_songs
+                  option: Stop
+              extra_styles: |
+                :host {
+                  display: block;
+                  width: 100%;
+                  min-width: 0;
+                }
+              styles:
+                card:
+                - width: calc(25vw - 44px)
+                - min-width: 0
+                - min-height: 100px
+                - box-sizing: border-box
+                - padding: 8px
+                - border-radius: 16px
+                - background-color: '#c62828'
+                grid:
+                - grid-template-areas: '"i" "n"'
+                - grid-template-columns: 1fr
+                - grid-template-rows: auto auto
+                - row-gap: 4px
+                name:
+                - white-space: normal
+                - overflow: visible
+                - text-overflow: clip
+                - text-align: center
+                - line-height: 1.2
+                - font-weight: 600
+                - font-size: clamp(14px, 1.5vw, 22px)
+                - color: white
+                icon:
+                - width: 40px
+                - color: white
+            - type: custom:button-card
+              name: Donate by card
+              icon: mdi:credit-card-tap
+              show_state: false
+              tap_action:
+                action: call-service
+                service: script.donation_open
+              extra_styles: |
+                :host {
+                  display: block;
+                  width: 100%;
+                  min-width: 0;
+                }
+              styles:
+                card:
+                - width: calc(25vw - 44px)
+                - min-width: 0
+                - min-height: 100px
+                - box-sizing: border-box
+                - padding: 8px
+                - border-radius: 16px
+                - background-color: '#f9a825'
+                grid:
+                - grid-template-areas: '"i" "n"'
+                - grid-template-columns: 1fr
+                - grid-template-rows: auto auto
+                - row-gap: 4px
+                name:
+                - white-space: normal
+                - overflow: visible
+                - text-overflow: clip
+                - text-align: center
+                - line-height: 1.2
+                - font-weight: 600
+                - font-size: clamp(14px, 1.5vw, 22px)
+                - color: black
+                icon:
+                - width: 40px
+                - color: black
+            - type: custom:button-card
+              icon: mdi:hand-wave
+              show_state: false
+              triggers_update:
+              - __PERSON__
+              - timer.help_request_cooldown
+              name: |
+                [[[
+                  const p = states['__PERSON__'];
+                  const t = states['timer.help_request_cooldown'];
+                  if (t && t.state === 'active') return 'Help requested - someone is on the way';
+                  return (p && p.state === 'home') ? 'Request help' : 'Help not available';
+                ]]]
+              tap_action:
+                action: call-service
+                service: script.donation_help_dashboard
+              extra_styles: |
+                :host {
+                  display: block;
+                  width: 100%;
+                  min-width: 0;
+                }
+              styles:
+                card:
+                - width: calc(25vw - 44px)
+                - min-width: 0
+                - min-height: 100px
+                - box-sizing: border-box
+                - padding: 8px
+                - border-radius: 16px
+                - background-color: |
+                    [[[
+                      const p = states['__PERSON__'];
+                      const t = states['timer.help_request_cooldown'];
+                      if (t && t.state === 'active') return '#2e7d32';
+                      return (p && p.state === 'home') ? '#1565c0' : '#757575';
+                    ]]]
+                grid:
+                - grid-template-areas: '"i" "n"'
+                - grid-template-columns: 1fr
+                - grid-template-rows: auto auto
+                - row-gap: 4px
+                name:
+                - white-space: normal
+                - overflow: visible
+                - text-overflow: clip
+                - text-align: center
+                - line-height: 1.2
+                - font-weight: 600
+                - font-size: clamp(14px, 1.5vw, 22px)
+                - color: white
+                icon:
+                - width: 40px
+                - color: white
+  - type: conditional
+    conditions:
+    - condition: state
+      entity: input_select.kiosk_page
+      state: songs
+    - condition: state
+      entity: input_boolean.song_enabled
+      state: 'off'
+    card:
+      type: custom:mod-card
+      card_mod:
+        style: |
+          :host {
+            min-width: 0;
+          }
+          ha-card {
+            /* whitespace on all four sides: 16px top/bottom, 8px sides + 8px padding inside */
+            height: calc(100vh - 32px);   /* adjust if the bottom is cut off or a page scrollbar appears */
+            margin: 16px 8px;
+            padding: 8px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: none;
+            box-shadow: none;
+            border: none;
+          }
+      card:
+        type: vertical-stack
+        cards:
+        - type: heading
+          heading: Lights are unabalable at the moment
+          heading_style: title
+        - type: picture-elements
+          elements: []
+          image:
+            media_content_id: media-source://image_upload/60ab58e4a47a23020cf149534b446ad2
+            media_content_type: image/png
+            metadata:
+              title: The Christmas Lights are currently unavailable.png
+              thumbnail: /api/image/serve/60ab58e4a47a23020cf149534b446ad2/256x256
+              media_class: image
+              navigateIds:
+              - {}
+              - media_content_type: app
+                media_content_id: media-source://image_upload
+        - type: clock
+        - type: custom:button-card
+          name: Donate by card
+          icon: mdi:credit-card-tap
+          show_state: false
+          tap_action:
+            action: call-service
+            service: script.donation_open
+          extra_styles: |
+            :host {
+              display: block;
+              width: 100%;
+              min-width: 0;
+            }
+          styles:
+            card:
+            - width: calc(100vw - 36px)
+            - min-width: 0
+            - min-height: 100px
+            - box-sizing: border-box
+            - padding: 8px
+            - border-radius: 16px
+            - background-color: '#f9a825'
+            grid:
+            - grid-template-areas: '"i" "n"'
+            - grid-template-columns: 1fr
+            - grid-template-rows: auto auto
+            - row-gap: 4px
+            name:
+            - white-space: normal
+            - overflow: visible
+            - text-overflow: clip
+            - text-align: center
+            - line-height: 1.2
+            - font-weight: 600
+            - font-size: clamp(14px, 1.5vw, 22px)
+            - color: black
+            icon:
+            - width: 40px
+            - color: black
+  - type: conditional
+    conditions:
+    - condition: state
+      entity: input_select.kiosk_page
+      state: donate
+    card:
+      type: vertical-stack
+      cards:
+      - type: horizontal-stack
+        cards:
+        - type: custom:mod-card
+          card_mod:
+            style: |
+              :host {
+                min-width: 0;
+              }
+              ha-card {
+                /* whitespace on all four sides: 16px top/bottom, 8px sides + 8px padding inside */
+                height: calc(100vh - 32px - 210px);   /* adjust if the bottom is cut off or a page scrollbar appears */
+                margin: 16px 8px;
+                padding: 8px;
+                box-sizing: border-box;
+                overflow-y: auto;
+                overflow-x: hidden;
+                background: none;
+                box-shadow: none;
+                border: none;
+              }
+          card:
+            type: vertical-stack
+            cards:
+            - type: markdown
+              content: |
+                # Support our lights ❤️
+                ## Donation: £{{ '%.2f' | format(states('input_number.donation_amount') | float(0)) }}
+                Choose an amount between £{{ '%.2f' | format(states('input_number.donation_min') | float(1)) }} and £{{ '%.2f' | format(states('input_number.donation_max') | float(100)) }}
+            - type: grid
+              columns: 4
+              square: false
+              cards:
+              - type: custom:button-card
+                name: £2
+                icon: mdi:hand-coin
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: input_number.set_value
+                  target:
+                    entity_id: input_number.donation_amount
+                  service_data:
+                    value: 2
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc((50vw - 68px) / 4)
+                  - min-width: 0
+                  - min-height: 90px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#1565c0'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 40px
+                  - color: white
+              - type: custom:button-card
+                name: £5
+                icon: mdi:hand-coin
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: input_number.set_value
+                  target:
+                    entity_id: input_number.donation_amount
+                  service_data:
+                    value: 5
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc((50vw - 68px) / 4)
+                  - min-width: 0
+                  - min-height: 90px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#1565c0'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 40px
+                  - color: white
+              - type: custom:button-card
+                name: £8
+                icon: mdi:hand-coin
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: input_number.set_value
+                  target:
+                    entity_id: input_number.donation_amount
+                  service_data:
+                    value: 8
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc((50vw - 68px) / 4)
+                  - min-width: 0
+                  - min-height: 90px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#1565c0'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 40px
+                  - color: white
+              - type: custom:button-card
+                name: £10
+                icon: mdi:hand-coin
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: input_number.set_value
+                  target:
+                    entity_id: input_number.donation_amount
+                  service_data:
+                    value: 10
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc((50vw - 68px) / 4)
+                  - min-width: 0
+                  - min-height: 90px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#1565c0'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 40px
+                  - color: white
+            - type: grid
+              columns: 4
+              square: false
+              cards:
+              - type: custom:button-card
+                name: -£5
+                icon: mdi:minus-box
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: script.donation_adjust
+                  service_data:
+                    delta: -5
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc((50vw - 68px) / 4)
+                  - min-width: 0
+                  - min-height: 70px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#757575'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 28px
+                  - color: white
+              - type: custom:button-card
+                name: -£1
+                icon: mdi:minus
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: script.donation_adjust
+                  service_data:
+                    delta: -1
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc((50vw - 68px) / 4)
+                  - min-width: 0
+                  - min-height: 70px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#757575'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 28px
+                  - color: white
+              - type: custom:button-card
+                name: +£1
+                icon: mdi:plus
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: script.donation_adjust
+                  service_data:
+                    delta: 1
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc((50vw - 68px) / 4)
+                  - min-width: 0
+                  - min-height: 70px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#757575'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 28px
+                  - color: white
+              - type: custom:button-card
+                name: +£5
+                icon: mdi:plus-box
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: script.donation_adjust
+                  service_data:
+                    delta: 5
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc((50vw - 68px) / 4)
+                  - min-width: 0
+                  - min-height: 70px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#757575'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 28px
+                  - color: white
+            - type: entities
+              entities:
+              - entity: input_number.donation_amount
+                name: Custom amount
+        - type: custom:mod-card
+          card_mod:
+            style: |
+              :host {
+                min-width: 0;
+              }
+              ha-card {
+                /* whitespace on all four sides: 16px top/bottom, 8px sides + 8px padding inside */
+                height: calc(100vh - 32px - 210px);   /* adjust if the bottom is cut off or a page scrollbar appears */
+                margin: 16px 8px;
+                padding: 8px;
+                box-sizing: border-box;
+                overflow-y: auto;
+                overflow-x: hidden;
+                background: none;
+                box-shadow: none;
+                border: none;
+              }
+          card:
+            type: vertical-stack
+            cards:
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state: success
+              card:
+                type: markdown
+                content: |
+                  # ✅ Thank you!
+                  ## {{ states('input_text.donation_message') }}
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state: failed
+              card:
+                type: markdown
+                content: |
+                  # ❌ Not completed
+                  ## {{ states('input_text.donation_message') }}
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state: timeout
+              card:
+                type: markdown
+                content: |
+                  # ⏱️ Timed out
+                  ## {{ states('input_text.donation_message') }}
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state: error
+              card:
+                type: markdown
+                content: |
+                  # ⚠️ Problem
+                  ## {{ states('input_text.donation_message') }}
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state: waiting
+              card:
+                type: markdown
+                content: |
+                  # 💳 Tap your card on the reader
+                  ## Donation: £{{ states('input_text.donation_attempt_amount') }}
+                  ### {{ states('input_text.donation_message') }}
+
+                  *Want a different amount? Choose it on the left - this payment will be cancelled, then press **Pay by card**.*
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state: waiting
+              card:
+                type: entities
+                show_header_toggle: false
+                entities:
+                - entity: timer.donation_timeout
+                  name: Time left
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state_not: waiting
+              card:
+                type: custom:button-card
+                name: Pay by card
+                icon: mdi:credit-card-tap
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: script.donation_submit
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc(50vw - 44px)
+                  - min-width: 0
+                  - min-height: 100px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#2e7d32'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 40px
+                  - color: white
+            - type: conditional
+              conditions:
+              - condition: state
+                entity: input_select.donation_state
+                state: waiting
+              card:
+                type: custom:button-card
+                name: Cancel payment
+                icon: mdi:close-circle
+                show_state: false
+                tap_action:
+                  action: call-service
+                  service: script.donation_cancel
+                extra_styles: |
+                  :host {
+                    display: block;
+                    width: 100%;
+                    min-width: 0;
+                  }
+                styles:
+                  card:
+                  - width: calc(50vw - 44px)
+                  - min-width: 0
+                  - min-height: 100px
+                  - box-sizing: border-box
+                  - padding: 8px
+                  - border-radius: 16px
+                  - background-color: '#c62828'
+                  grid:
+                  - grid-template-areas: '"i" "n"'
+                  - grid-template-columns: 1fr
+                  - grid-template-rows: auto auto
+                  - row-gap: 4px
+                  name:
+                  - white-space: normal
+                  - overflow: visible
+                  - text-overflow: clip
+                  - text-align: center
+                  - line-height: 1.2
+                  - font-weight: 600
+                  - font-size: clamp(14px, 1.5vw, 22px)
+                  - color: white
+                  icon:
+                  - width: 40px
+                  - color: white
+            - type: custom:button-card
+              name: Back to songs
+              icon: mdi:arrow-left-circle
+              show_state: false
+              tap_action:
+                action: call-service
+                service: script.donation_back
+              extra_styles: |
+                :host {
+                  display: block;
+                  width: 100%;
+                  min-width: 0;
+                }
+              styles:
+                card:
+                - width: calc(50vw - 44px)
+                - min-width: 0
+                - min-height: 100px
+                - box-sizing: border-box
+                - padding: 8px
+                - border-radius: 16px
+                - background-color: '#757575'
+                grid:
+                - grid-template-areas: '"i" "n"'
+                - grid-template-columns: 1fr
+                - grid-template-rows: auto auto
+                - row-gap: 4px
+                name:
+                - white-space: normal
+                - overflow: visible
+                - text-overflow: clip
+                - text-align: center
+                - line-height: 1.2
+                - font-weight: 600
+                - font-size: clamp(14px, 1.5vw, 22px)
+                - color: white
+                icon:
+                - width: 40px
+                - color: white
+            - type: markdown
+              content: Payments by card are subject to our donation policy, visit tobywhiting10.com/donation-policy
+              card_mod:
+                style: |
+                  ha-card {
+                    margin: 0 8px;
+                    font-size: 12px;
+                    text-align: center;
+                    color: var(--secondary-text-color);
+                    background: none;
+                    box-shadow: none;
+                    border: none;
+                  }
+      - type: horizontal-stack
+        cards:
+        - type: markdown
+          content: |
+            ### Prefer not to pay by card?
+            You can also donate online to our Cancer Research UK fundraising page. Visit **tobywhiting10.com/donate** or scan the QR Code.
+
+            Donations by card will be split 90% to Cancer Research UK and 10% to help support the project (excluding transaction fees). Funds will be transferred to the donation page approximately once weekly. For full terms on how we handle your donation visit **tobywhiting10.com/donation-policy**. If you would like to donate exclusively to Cancer Research or to the project independently, please use the QR Code and select the appropriate option.
+          card_mod:
+            style: |
+              ha-card {
+                margin: 8px 8px 16px 8px;
+                box-sizing: border-box;
+                font-size: 14px;
+              }
+        - type: markdown
+          content: |
+            **QR code**
+
+            coming soon
+          card_mod:
+            style: |
+              :host {
+                flex: 0 0 170px !important;
+              }
+              ha-card {
+                margin: 8px 8px 16px 8px;
+                height: 170px;
+                box-sizing: border-box;
+                border: 3px dashed #9e9e9e;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+              }

@@ -23,7 +23,7 @@ nav{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}.tab{background:var(-
 select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}[hidden]{display:none!important}
 </style></head><body><main>
 <h1>Bussage lights - admin</h1>
-<nav><button class="tab on" id="tab-ov">Overview</button><button class="tab" id="tab-tx">Transaction log</button><button class="tab" id="tab-yaml">Song buttons YAML</button></nav>
+<nav><button class="tab on" id="tab-ov">Overview</button><button class="tab" id="tab-tx">Transaction log</button><button class="tab" id="tab-yaml">Dashboard YAML</button></nav>
 <div id="pg-ov">
 <div class="grid" id="kpis"></div>
 <div id="warn" class="msg warn"></div>
@@ -70,10 +70,13 @@ select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var
 <div class="small">Every card payment (reported one by one by Home Assistant), manual payment and Buy Me a Coffee entry. <b>Hide</b> keeps a row here but excludes it from every total (use for refunds); <b>delete</b> removes it for good. Fees are estimates from the current settings.</div>
 <form><select id="tx-filter"><option value="">All</option><option value="card">Card only</option><option value="manual">Manual payments only</option><option value="coffee">Coffee only</option></select><span class="small" id="tx-count"></span></form>
 <div style="overflow-x:auto"><table id="t-tx"></table></div></section></div>
-<div id="pg-yaml" hidden><section><h2>Song buttons for the Home Assistant dashboard</h2>
-<div class="small">Generated from songs.yaml. Copy a category block into a column's <code>cards:</code> list.</div>
-<form><button type="button" id="y-load">Refresh</button><button type="button" id="y-copy">Copy all</button><span class="small" id="y-msg"></span></form>
-<textarea id="y-text" readonly style="width:100%;height:60vh;font:12px/1.3 monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea></section></div>
+<div id="pg-yaml" hidden><section><h2>Full Home Assistant dashboard</h2>
+<div class="small" style="margin-bottom:8px">1. Paste your <b>base configuration</b> (kiosk settings + your admin/Home tab) below. It is remembered. 2. Press <b>Generate</b>: the Outdoor tab (all song buttons from songs.yaml, donate page, etc.) is added and the whole dashboard is shown, ready to paste into Home Assistant's raw configuration editor. Comments in the base are not kept, and any manual edits to the Outdoor tab in Home Assistant are replaced.</div>
+<form><label class="small">Person entity for the Request help button<br><input id="d-person" placeholder="person.name" style="width:240px"></label></form>
+<div class="small">Base configuration</div>
+<textarea id="d-base" spellcheck="false" style="width:100%;height:28vh;font:12px/1.3 monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
+<form style="margin-top:8px"><button type="button" id="d-gen">Generate full dashboard</button><button type="button" id="d-copy">Copy</button><button type="button" id="d-btns" class="x">Buttons only</button><span class="small" id="d-msg"></span></form>
+<textarea id="d-out" readonly spellcheck="false" style="width:100%;height:50vh;font:12px/1.3 monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea></section></div>
 </main><script>
 const $=id=>document.getElementById(id), P=n=>"£"+Number(n).toFixed(2), today=new Date().toISOString().slice(0,10);
 $("tr-date").value=$("bmc-date").value=$("man-date").value=today;
@@ -103,7 +106,7 @@ $("f-set").onsubmit=async e=>{e.preventDefault();const m=$("m-set");m.className=
  catch(x){m.className="msg err";m.textContent=x.message}};
 const TABS=["ov","tx","yaml"];
 function show(t){for(const x of TABS){$("pg-"+x).hidden=x!==t;$("tab-"+x).classList.toggle("on",x===t)}
- try{location.hash=t}catch(e){} if(t==="tx")loadTx(); if(t==="yaml"&&!$("y-text").value)loadYaml()}
+ try{location.hash=t}catch(e){} if(t==="tx")loadTx(); if(t==="yaml"&&!$("d-base").value)loadDash().catch(e=>{$("d-msg").textContent=e.message})}
 for(const x of TABS)$("tab-"+x).onclick=()=>show(x);
 async function loadTx(){const f=$("tx-filter").value,d=await api("GET","/dash/api/transactions");const t=$("t-tx");
  t.innerHTML="<tr><th>When</th><th>Type</th><th>Source</th><th class=n>Amount</th><th class=n>Est. fee</th><th class=n>Est. net</th><th>Reference</th><th></th></tr>";
@@ -119,9 +122,12 @@ async function loadTx(){const f=$("tx-filter").value,d=await api("GET","/dash/ap
   a.append(hb,db)}
  $("tx-count").textContent=n+" shown"+(h?", "+h+" hidden":"")+(d.count>d.shown?" (latest "+d.shown+" of "+d.count+")":"")}
 $("tx-filter").onchange=loadTx;
-async function loadYaml(){$("y-msg").textContent="Loading...";try{const r=await fetch("/api/v1/songs/buttons.yaml");$("y-text").value=await r.text();$("y-msg").textContent=""}catch(e){$("y-msg").textContent="Failed: "+e.message}}
-$("y-load").onclick=loadYaml;
-$("y-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("y-text").value);$("y-msg").textContent="Copied"}catch(e){$("y-text").select();$("y-msg").textContent="Press Ctrl+C to copy"}};
+async function loadDash(){const d=await api("GET","/dash/api/dashboard");$("d-base").value=d.base;$("d-person").value=d.person;$("d-msg").textContent=d.saved?"":"Showing an example base: replace it with your own."}
+$("d-gen").onclick=async()=>{const m=$("d-msg");m.className="small";m.textContent="Generating...";
+ try{const r=await api("POST","/dash/api/dashboard",{base:$("d-base").value,person:$("d-person").value});$("d-out").value=r.yaml;m.textContent="Done - base saved."}
+ catch(e){m.className="small err";m.textContent=e.message}};
+$("d-btns").onclick=async()=>{const r=await fetch("/api/v1/songs/buttons.yaml");$("d-out").value=await r.text();$("d-msg").textContent="Buttons only (no tab around them)."};
+$("d-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("d-out").value);$("d-msg").textContent="Copied"}catch(e){$("d-out").select();$("d-msg").textContent="Press Ctrl+C to copy"}};
 function wire(f,msg,url,body){$(f).onsubmit=async e=>{e.preventDefault();const m=$(msg);m.className="msg";m.textContent="";
  try{await api("POST",url,body());m.className="msg ok";m.textContent="Saved";e.target.reset();$("tr-date").value=$("bmc-date").value=$("man-date").value=today;load()}catch(x){m.className="msg err";m.textContent=x.message}}}
 wire("f-tr","m-tr","/dash/api/transfers",()=>({amount:$("tr-amt").value,date:$("tr-date").value,note:$("tr-note").value}));

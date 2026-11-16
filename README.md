@@ -94,3 +94,12 @@ Settings, transfers, coffees and payments are all stored in the SQLite file on t
   the "transaction fees apply" box decides whether the card fee is deducted for that entry (off by default).
 * `generated_at` in the API is the moment the figures were calculated, which happens on every request (not only when songs play).
   `/api/v1/stats` is sent with `Cache-Control: max-age=60`, so a browser or proxy may show a copy up to a minute old.
+
+## Dashboard YAML tab (full dashboard)
+`/dash` > Dashboard YAML: paste your base configuration (kiosk settings + your admin/Home view), set the person entity for the
+Request help button, press Generate. The service adds the **Outdoor Tab** view (one song column per category in `songs.yaml`, plus the
+donate page and controls, from the bundled template `app/outdoor_view.yaml`) and shows the whole dashboard to paste into HA's raw
+configuration editor. An existing Outdoor tab in the base is replaced. The base is remembered. Comments in the base are lost
+(it is re-serialised), and edits made to the Outdoor tab inside HA are overwritten the next time you paste: change the template instead.
+With more than 3 categories the extras share the third column (the fourth column is the controls). "Buttons only" still gives just the cards.
+Note the bundled template is the version from this project, not any later hand-edits you made in HA.
