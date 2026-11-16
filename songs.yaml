@@ -16,6 +16,7 @@ songs:
   - { file: "Merry Christmas - Ed Sheeran.fseq", title: "Merry Christmas", artist: "Ed Sheeran", category: "Christmas Modern", duration_seconds: "208" }
   
 
+  - { file: "2026 big show.xsq", title: "The Big Show", artist: "Toby W", category: "Other / Comedy", duration_seconds: "450" }
   - { file: "Last Christmas (Techno Remix) - Gabriel Wittner.fseq", title: "Last Christmas EDM Dance MIX", artist: "Wham! (Mix)", category: "Other / Comedy", duration_seconds: "93" }
   - { file: "Lou Monte - Dominick The Donkey HQ Audio.fseq", title: "Dominick The Donkey", artist: "Lou Monte", category: "Other / Comedy", duration_seconds: "243" }
   - { file: "steves lava chicken.fseq", title: "Steve's Lava Chicken ", artist: "The Minecraft movie ", category: "Other / Comedy", duration_seconds: "52" }
